@@ -1,0 +1,14 @@
+#!/bin/sh
+# Load the IPA (IP Accelerator) firmware - needed for mobile data on sdm845.
+# Ported from the upstart job ipa_fws.conf of the 16.04 port.
+[ -e /dev/ipa ] || exit 0
+
+i=0
+while ! mountpoint -q -- /vendor; do
+    i=$((i + 1))
+    [ "$i" -gt 60 ] && exit 0
+    sleep 1
+done
+
+[ -f /vendor/firmware/ipa_fws.mdt ] && echo 1 > /dev/ipa
+exit 0

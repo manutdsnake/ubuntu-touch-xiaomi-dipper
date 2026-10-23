@@ -1,0 +1,66 @@
+dipper:
+    PrettyName: Xiaomi Mi 8
+    DeviceType: phone
+    GridUnit: 21
+    WebkitDpr: 2
+    SupportedOrientations:
+        - Portrait
+        - Landscape
+        - InvertedLandscape
+    # Verified on device: the panel exposes a backlight class device, not an LED
+    # class one, with max_brightness 1023.
+    BacklightSysfsPath:
+        - /sys/class/backlight/panel0-backlight
+    # The "flashlight" node from dipper-p0.dtsi is a flash LED (qcom,id = 3,
+    # duration 1280 ms) and is not covered by switch_0, whose qcom,led-mask = <3>
+    # spans LED0/LED1 - so driving it from the indicator did nothing. The torch
+    # LED behind that switch is led:torch_0 (max 300 mA), verified on device.
+    FlashlightSysfsPath:
+        - /sys/class/leds/led:torch_0/brightness
+    FlashlightSwitchPath:
+        - /sys/class/leds/led:switch_0/brightness
+    # Notification LED: one white LED; without this hfd-service falls back to
+    # LedsDummy and notifications never light it.
+    SingleColorLedSysfsPath: /sys/class/leds/white
+    MirAndroidPlatformServerBackpressure:
+        - false
+    MirAndroidPlatformServerPartialUpdates:
+        - true
+    MirAndroidPlatformServerEglSync:
+        - false
+    MirAndroidPlatformClientEglFlush:
+        - "!/usr/bin/unity8,!/usr/bin/lomiri,all"
+    XwaylandShm:
+        - true
+    LomiriInteractiveBlur:
+        - true
+    VibrateDurationExtraMs: 40
+    # ofono's binder plugin (HIDL radio via libgbinder-radio); the legacy ril
+    # plugin wants /dev/socket/rild, which Android 15's qcrild does not provide.
+    # Slots are named in /etc/ofono/ril_subscription.conf.
+    OfonoPlugin: binder
+    # pulseaudio-modules-droid cannot configure the vendor's 24-bit packed
+    # primary output; /etc/dipper/audio_policy_configuration.xml is the vendor
+    # file with those mix ports as 16-bit (see its header).
+    PulseaudioModulesDroid_ExtraCardArgs:
+        - config=/etc/dipper/audio_policy_configuration.xml
+    # Enable once the port is confirmed to boot and unlock reliably:
+    #FilesystemEncryption: true
+    # Notch geometry, taken from LineageOS device/xiaomi/dipper
+    # config_mainBuiltInDisplayCutout. That path is expressed with the origin at
+    # the centre top of the display and spans x=-295..+295, y=0..88; on a 1080px
+    # wide panel that is x=245..835. status_bar_height_portrait is 88px there too.
+    # The first and last rectangle keep the panel out of the rounded display
+    # corners, which otherwise clip the outermost indicators; the middle one is
+    # the notch itself. Corner width is empirical - LineageOS defines no radius
+    # for this device.
+    CollapsedPanelHeight: 88
+    DisplayCutoutsCollapsed:
+        - 0 0 48 88
+        - 245 0 590 88
+        - 1032 0 48 88
+    # Expanded panel: only the notch.  Expanded indicators are >= 5.5 gu wide
+    # (IndicatorItem.qml override) and the row skips every cutout; with the
+    # 48 px corners as well only one indicator fitted each side of this notch.
+    DisplayCutoutsExpanded:
+        - 245 0 590 88

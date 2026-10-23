@@ -1,0 +1,256 @@
+#!/usr/bin/env python3
+"""Tell the audio HAL when a voice call starts and ends.
+
+On Qualcomm the voice path is started by set_parameters("vsid=N;call_state=2")
+and stopped with call_state=1.  In Android the modem side pushes that through
+vendor.qti.hardware.radio.am@1.0::IQcRilAudio into a callback telephony
+registers; on this port audiosystem-passthrough (qti mode) is meant to be that
+callback, but during real calls the HAL never received call_state=2 (see the
+handoff), while injecting the same string through the passthrough's D-Bus
+interface started the voice path at once.  So do what the modem side does not:
+watch ofono for calls and inject.
+
+Which VSID the modem uses depends on the call's domain: VoLTE (IMS) calls run
+on VOICEMMODE1, circuit-switched ones (including CSFB from LTE) on VOICE.
+ofono's IpMultimediaSystem does not see the Qualcomm IMS stack here (it said
+"Registered = 0" during a VoLTE call), so the deciding signal is the radio
+technology once the call is up: a CSFB call has moved the modem to 3G/2G,
+a VoLTE call stays on LTE (or NR).
+Opening both at once (the first version) made the HAL fail the unused CS one
+("cannot prepare channel") and tear down routes the IMS session was about to
+use: the call was silent until the user toggled speaker/earpiece.
+
+Since the duplicate audiosystem-passthrough instances were removed, the
+modem side (qcrild -> IQcRilAudio -> passthrough-qti) does deliver call_state
+itself, with the right VSID, right after the answer.  Injecting on top of it
+started a second session that failed ("cannot open device 2 ... busy") and tore
+the earpiece route down - silent until speaker was toggled.  So this is now a
+fallback: if a voice front end (pcm 2 VoiceMMode1 / 19 VoiceMMode2) is already
+open a moment into the call, the modem did its part.
+
+Even then the earpiece stayed silent until the user switched to speaker and
+back: at call start PulseAudio's own low-latency stream is moved onto the
+earpiece while the HAL reconfigures the same backend for voice (24 -> 16 bit),
+and the voice route does not come out working.  A later re-route (select_devices
+for the voice usecase alone) does.  So once the voice path is up, the sink port
+is flipped to the wired headphone output (silent, nothing is plugged in) and
+back to the earpiece - the user's workaround, done in a quarter second.
+
+The voice path is started only once a call is established (active, or dialing/
+alerting for outgoing calls - the network plays the ringback), after a short
+delay so telephony-service has already switched PulseAudio to the voicecall
+profile and set the port.  A ringing incoming call does not count.
+"""
+import os, subprocess, sys, time, dbus, dbus.mainloop.glib
+from gi.repository import GLib
+
+PA_SOCKET = "unix:path=/run/user/32011/pulse/dbus-socket"
+PT_PATH = "/org/sailfishos/audiosystempassthrough"
+PT_IFACE = "org.SailfishOS.AudioSystemPassthrough"
+VSID_VOICEMMODE1 = 297816064   # 0x11C05000, IMS / VoLTE, SIM 1
+VSID_VOICE = 281022464         # 0x10C01000, circuit switched, SIM 1
+VSID_VOICEMMODE2 = 299651072   # 0x11DC5000, IMS / VoLTE, SIM 2
+VSID_VOICE2 = 282857472        # 0x10DC1000, circuit switched, SIM 2
+CALL_ACTIVE, CALL_INACTIVE = 2, 1
+
+def log(msg):
+    print("dipper-call-audio: " + msg, flush=True)
+
+AUDIO_STATES = ("active", "dialing", "alerting", "held")
+START_DELAY_MS = 200
+CHECK_TRIES = 24       # x START_DELAY_MS for the modem to open the voice path
+VOICE_PCMS = ("pcm2p", "pcm2c", "pcm19p", "pcm19c")
+
+class Bridge:
+    def __init__(self):
+        self.bus = dbus.SystemBus()
+        self.calls = {}           # ofono VoiceCall path -> State
+        self.active_vsids = ()    # what we told the HAL
+        self.pending = None
+        self.bus.add_signal_receiver(self.call_added, "CallAdded", "org.ofono.VoiceCallManager", path_keyword="modem")
+        self.bus.add_signal_receiver(self.call_removed, "CallRemoved", "org.ofono.VoiceCallManager", path_keyword="modem")
+        self.bus.add_signal_receiver(self.call_changed, "PropertyChanged", "org.ofono.VoiceCall", path_keyword="path")
+        self.sync_existing()
+        log("watching ofono; %d call(s) now" % len(self.calls))
+
+    def modems(self):
+        mgr = dbus.Interface(self.bus.get_object("org.ofono", "/"), "org.ofono.Manager")
+        return mgr.GetModems()
+
+    def sync_existing(self):
+        try:
+            for path, props in self.modems():
+                if "org.ofono.VoiceCallManager" in props.get("Interfaces", []):
+                    vcm = dbus.Interface(self.bus.get_object("org.ofono", path), "org.ofono.VoiceCallManager")
+                    for cpath, cprops in vcm.GetCalls():
+                        self.calls[str(cpath)] = str(cprops.get("State", ""))
+        except dbus.DBusException as e:
+            log("ofono not ready: %s" % e)
+        self.update()
+
+    def call_modem(self):
+        """ofono modem path of the call that wants audio (/ril_0 or /ril_1)."""
+        for cpath, st in self.calls.items():
+            if st in AUDIO_STATES:
+                return cpath.rsplit("/", 1)[0]
+        return "/ril_0"
+
+    def volte(self, modem):
+        """True for an IMS/VoLTE call: IMS registered, or still on LTE/NR."""
+        try:
+            for path, props in self.modems():
+                if str(path) != modem:
+                    continue
+                ifaces = props.get("Interfaces", [])
+                if "org.ofono.IpMultimediaSystem" in ifaces:
+                    ims = dbus.Interface(self.bus.get_object("org.ofono", path), "org.ofono.IpMultimediaSystem")
+                    if bool(ims.GetProperties().get("Registered", False)):
+                        return True
+                if "org.ofono.NetworkRegistration" in ifaces:
+                    reg = dbus.Interface(self.bus.get_object("org.ofono", path), "org.ofono.NetworkRegistration")
+                    tech = str(reg.GetProperties().get("Technology", ""))
+                    log("radio technology during the call: %s" % tech)
+                    if tech in ("lte", "nr"):
+                        return True
+        except dbus.DBusException as e:
+            log("call domain unknown (%s), assuming circuit switched" % e)
+        return False
+
+    def call_added(self, path, props, modem=None):
+        self.calls[str(path)] = str(props.get("State", ""))
+        log("call %s: %s" % (path, self.calls[str(path)]))
+        self.update()
+
+    def call_removed(self, path, modem=None):
+        self.calls.pop(str(path), None)
+        self.update()
+
+    def call_changed(self, name, value, path=None):
+        if name == "State" and str(path) in self.calls:
+            self.calls[str(path)] = str(value)
+            log("call %s: %s" % (path, value))
+            self.update()
+
+    def wanted(self):
+        return any(st in AUDIO_STATES for st in self.calls.values())
+
+    def update(self):
+        if self.wanted():
+            if not self.active_vsids and self.pending is None:
+                self.pending = GLib.timeout_add(START_DELAY_MS, self.start)
+        else:
+            if self.pending is not None:
+                GLib.source_remove(self.pending)
+                self.pending = None
+            if self.active_vsids and self.active_vsids != ("modem",):
+                self.send(self.active_vsids, CALL_INACTIVE)
+            self.active_vsids = ()
+            self.tries = 0
+
+    def modem_started_voice(self):
+        for pcm in VOICE_PCMS:
+            try:
+                with open("/proc/asound/card0/%s/sub0/status" % pcm) as f:
+                    if "closed" not in f.readline():
+                        return pcm
+            except OSError:
+                pass
+        return None
+
+    def pactl(self, *args):
+        # The unit runs as phablet, PulseAudio's user; as root, go through runuser.
+        env = dict(os.environ, XDG_RUNTIME_DIR="/run/user/32011", HOME="/home/phablet")
+        cmd = ["pactl"] + list(args)
+        if os.getuid() == 0:
+            cmd = ["runuser", "-u", "phablet", "--"] + cmd
+        r = subprocess.run(cmd, env=env, capture_output=True, text=True, timeout=10)
+        if r.returncode != 0:
+            log("pactl %s: rc %d %s" % (" ".join(args), r.returncode, r.stderr.strip()[:200]))
+            return None
+        return r.stdout
+
+    def active_port(self):
+        out = self.pactl("list", "sinks") or ""
+        in_sink = False
+        for line in out.splitlines():
+            if "Name: sink.primary_output" in line:
+                in_sink = True
+            elif in_sink and "Active Port:" in line:
+                return line.split(":", 1)[1].strip()
+        return ""
+
+    def reroute_earpiece(self):
+        port = ""
+        for _ in range(5):
+            port = self.active_port()
+            if port:
+                break
+            time.sleep(0.3)
+        if not port:
+            # telephony-service puts every answered call on the earpiece first
+            log("active port unreadable; assuming the earpiece")
+            port = "output-earpiece"
+        if port != "output-earpiece":
+            log("voice up on %s; no re-route needed" % port)
+            return
+        ok = self.pactl("set-sink-port", "sink.primary_output", "output-wired_headphone") is not None
+        time.sleep(0.25)
+        ok = (self.pactl("set-sink-port", "sink.primary_output", "output-earpiece") is not None) and ok
+        log("re-routed the voice call to the earpiece" if ok else "re-route to the earpiece FAILED")
+
+    def start(self):
+        self.pending = None
+        if not self.wanted() or self.active_vsids:
+            return False
+        pcm = self.modem_started_voice()
+        if pcm:
+            log("voice front end %s open: the modem started the call audio itself" % pcm)
+            try:
+                self.reroute_earpiece()
+            except Exception as e:
+                log("re-route failed: %s" % e)
+            self.active_vsids = ("modem",)
+            return False
+        self.tries = getattr(self, "tries", 0) + 1
+        if self.tries < CHECK_TRIES:
+            self.pending = GLib.timeout_add(START_DELAY_MS, self.start)
+            return False
+        self.tries = 0
+        if self.wanted() and not self.active_vsids:
+            # Each subscription has its own VSID pair; /ril_1 is SIM 2.
+            modem = self.call_modem()
+            sim2 = modem == "/ril_1"
+            if self.volte(modem):
+                vsids = (VSID_VOICEMMODE2,) if sim2 else (VSID_VOICEMMODE1,)
+            else:
+                vsids = (VSID_VOICE2,) if sim2 else (VSID_VOICE,)
+            if self.send(vsids, CALL_ACTIVE):
+                self.active_vsids = vsids
+        return False
+
+    def send(self, vsids, state):
+        for attempt in range(5):
+            try:
+                conn = dbus.connection.Connection(PA_SOCKET)
+                pt = dbus.Interface(conn.get_object(None, PT_PATH), PT_IFACE)
+                for vsid in vsids:
+                    pt.set_parameters("vsid=%d;call_state=%d" % (vsid, state))
+                conn.close()
+                log("sent call_state=%d for vsids %s (calls: %s)" % (state, tuple(hex(v) for v in vsids), sorted(set(self.calls.values()))))
+                return True
+            except Exception as e:
+                log("passthrough not reachable (%s), retry %d" % (e, attempt + 1))
+                time.sleep(1)
+        return False
+
+def main():
+    dbus.mainloop.glib.DBusGMainLoop(set_as_default=True)
+    while True:
+        try:
+            Bridge(); break
+        except dbus.DBusException as e:
+            log("system bus/ofono not ready: %s" % e); time.sleep(3)
+    GLib.MainLoop().run()
+
+if __name__ == "__main__":
+    main()

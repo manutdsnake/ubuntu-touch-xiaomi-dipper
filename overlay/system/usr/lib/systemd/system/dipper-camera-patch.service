@@ -1,0 +1,20 @@
+[Unit]
+Description=Camera: Xiaomi CHI override that exposes the tele and IR cameras on Halium
+# com.qti.chi.override.so (RemapCameraId) remaps every camera id >= 2 onto the
+# main camera unless ro.product.system.manufacturer is "xiaomi"; the Halium
+# GSI sets "halium", so "2x" and "IR" both opened the IMX363.  The patched
+# copy (one string, tools: see git log) reads ro.product.manufacturer, which is
+# "Xiaomi" from the vendor.  Must be in place before the camera provider starts.
+DefaultDependencies=no
+After=mount-android-partitions.service halium-android-partitions.service
+Before=lxc-android-config.service
+ConditionPathExists=/var/lib/lxc/android/rootfs/vendor/lib/hw/com.qti.chi.override.so
+
+[Service]
+Type=oneshot
+RemainAfterExit=yes
+ExecStart=/bin/mount --bind /usr/lib/dipper/vendor-patch/com.qti.chi.override.so /var/lib/lxc/android/rootfs/vendor/lib/hw/com.qti.chi.override.so
+ExecStop=-/bin/umount /var/lib/lxc/android/rootfs/vendor/lib/hw/com.qti.chi.override.so
+
+[Install]
+WantedBy=sysinit.target

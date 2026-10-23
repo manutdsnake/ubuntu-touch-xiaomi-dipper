@@ -1,0 +1,91 @@
+# The vendor's own rc with its three restart-cascade directives removed, and
+# nothing else changed.
+#
+# vndservicemanager needs /sys/fs/selinux: it calls selinux_status_open() and
+# selinux_check_access().  Booting security=apparmor - which Ubuntu Touch needs,
+# as on the Mi 9 port - leaves no selinuxfs, so it aborts and init
+# restarts it every five seconds.  Each death re-ran the whole "main", "hal" and
+# "early_hal" classes, tearing down and restarting every HAL on the device, 7 to
+# 11 seconds per cycle, forever.  That is why graphics.composer, sensors, health
+# and media.c2 were never findable, and why sensorfwd and bluebinder hung and the
+# boot never reached multi-user.target.
+#
+# Observed live over the USB console, and confirmed by stopping the loop by hand
+# on the failing system: the display composer came up within 25 seconds.
+#
+# Dropping those directives does not fix vndservicemanager - without selinuxfs it
+# still crash-loops - but it stops one dying service from taking the entire HAL
+# layer with it.
+service vndservicemanager /vendor/bin/vndservicemanager /dev/vndbinder
+    # See /usr/lib/dipper/android/libdipper_selinux_shim.so and shim/ in the
+    # port repo: passes through when selinuxfs exists, answers as permissive
+    # SELinux when it does not.  /vendor/lost+found is the empty directory the
+    # host bind-mounts the shim into, because the vendor linker namespace only
+    # permits libraries under /vendor and /odm, and the partition is read-only.
+    setenv LD_PRELOAD /vendor/lost+found/libdipper_selinux_shim.so
+    class core
+    user system
+    group system readproc
+    file /dev/kmsg w
+    task_profiles ServiceCapacityLow
+    shutdown critical
+
+# Dual SIM: qcril reads persist.radio.multisim.config to know how many
+# subscriptions to provision.  Android's telephony sets it; nothing here did,
+# so slot 2's SIM app never activated (setUiccSubscription timed out) and the
+# unprovisioned sub echoed every call of slot 1.  Must be set before qcrild.
+on early-boot
+    setprop persist.radio.multisim.config dsds
+# Audio HAL features we do not use (carried over from the Mi 9 port, where
+# they were switched off while chasing audio HAL crashes): usb_offload is USB-C
+# audio inside the HAL (PulseAudio does audio here), vbat is VBAT monitoring
+# for Qualcomm WSA speaker amps (the Mi 8 has TI TAS2557 amps), battery_listener
+# only feeds sound trigger.
+on early-boot
+    setprop vendor.audio.feature.battery_listener.enable false
+    setprop vendor.audio.feature.usb_offload.enable false
+    setprop vendor.audio.feature.usb_offload_burst_mode.enable false
+    setprop vendor.audio.feature.vbat.enable false
+
+# QTI's USB rmnet tethering daemon (vendor.dataqti, enabled by init.qcom.rc)
+# exits 255 every ~30 s here ("qti_rmnet_peripheral: Could not open device
+# file") and init restarts it forever.  Mobile data does not need it.
+on property:sys.boot_completed=1
+    stop vendor.dataqti
+
+# Android services with no user on Ubuntu Touch (Waydroid runs its own
+# container and is not affected): NNAPI, RCS chat, DRM/CAS for Android media
+# apps, MIUI video post-processing, LineageOS LiveDisplay, Xiaomi/WeChat pay
+# and trusted-UI TEE clients, Android telemetry/tracing.  ~100 MB RSS and
+# their wakeups.  `stop` also disables them, so init does not restart them.
+on property:sys.boot_completed=1
+    stop neuralnetworks_hal_service
+    stop vendor.imsrcsservice
+    stop vendor.drm-widevine-hal-1-3
+    stop vendor.drm-clearkey-service
+    stop vendor.vppservice
+    stop vendor.livedisplay-sdm
+    stop soter-1-0
+    stop vendor.mlipay-1-1
+    stop tui_comm-1-0
+    stop vendor.cas-hal-1-2
+    stop statsd
+    stop incidentd
+    stop traced
+    stop traced_probes
+
+# imsrcsservice is (re)started by the IMS stack after boot_completed.
+on property:init.svc.vendor.imsrcsservice=running && property:sys.boot_completed=1
+    stop vendor.imsrcsservice
+
+# Cameras: Xiaomi's CHI shows the tele and IR cameras only to clients in this
+# list (everything else gets them remapped onto the main camera - all back ids
+# reported the IMX363's 4.216 mm).  Ubuntu Touch's camera clients replace the
+# vendor's Android camera apps (a property value is limited to 91 bytes).  Read
+# once by the provider at start, so set on early-boot, before class hal.
+on early-boot
+    setprop vendor.camera.aux.packagelist "hybris,camera.ubports,qmlscene,lomiri-camera-app,org.lineageos.aperture"
+    # The CHI checks camera.clientname against that list (RemapCameraId); on
+    # MIUI/LineageOS the framework sets it per client, here nothing does, so
+    # every open looked like an unlisted app: "2x" opened the IMX363 again.
+    setprop camera.clientname hybris

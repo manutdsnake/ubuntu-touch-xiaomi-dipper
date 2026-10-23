@@ -1,0 +1,19 @@
+#!/bin/sh
+# Leave userdata clean at every shutdown/reboot.
+#
+# The rootfs is a loop-mounted image on userdata, so systemd-shutdown can never
+# unmount /userdata or remount it read-only (the loop device holds it open rw).
+# Its journal was left dirty on every reboot - "recovering journal" each boot,
+# and with metadata_csum journals, invalid-checksum blocks and a forced fsck.
+# systemd runs this after its own unmount loop, right before reboot(2): flush,
+# then an emergency read-only remount of everything, which the kernel forces
+# through regardless of open writers.
+sync
+echo u > /proc/sysrq-trigger
+# The emergency remount runs asynchronously; give it time to finish.
+i=0
+while [ $i -lt 20 ] && grep -q " /userdata ext4 rw" /proc/mounts 2>/dev/null; do
+    sleep 0.1; i=$((i + 1))
+done
+sleep 0.5
+sync

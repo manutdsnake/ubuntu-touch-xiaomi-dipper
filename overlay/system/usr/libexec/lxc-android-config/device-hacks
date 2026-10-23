@@ -1,0 +1,102 @@
+#!/bin/sh
+# Device-specific setup for the Xiaomi Mi 8, run by device-hacks.service once the
+# Android container is up.
+#
+# Why this file and not plain systemd units: everything this port ships lands in
+# /opt/halium-overlay and only becomes visible once mount-halium-overlay.service
+# has run. systemd computes multi-user.target's transaction before that, so unit
+# files shipped here are missing at the time their .wants symlinks are read and
+# are silently dropped - they never start, even though `systemctl is-enabled`
+# reports them as enabled afterwards. device-hacks, by contrast, exists in the
+# base rootfs as a placeholder meant to be overlaid, so it is picked up normally.
+
+# Units that do exist by now (systemd re-read them on mount-halium-overlay's
+# daemon-reload), but were never pulled into the boot transaction.
+for unit in fpc-key-disable goodix-key-disable dipper-ipa-fws; do
+    systemctl start "$unit.service" || true
+done
+
+# The container's vendor ueventd chowns the flash LED attributes to system:system
+# 0644 (see /android/vendor/ueventd.rc), which leaves the indicator - running as
+# phablet - unable to drive the torch. phablet is in the video group. ueventd can
+# still be working through its uevents at this point, so reapply a few times.
+i=0
+while [ "$i" -lt 5 ]; do
+    for node in led:torch_0 led:torch_1 led:switch_0; do
+        attr="/sys/class/leds/$node/brightness"
+        [ -e "$attr" ] || continue
+        chgrp video "$attr" 2>/dev/null || true
+        chmod 664 "$attr" 2>/dev/null || true
+    done
+    i=$((i + 1))
+    [ "$i" -lt 5 ] && sleep 3
+done
+
+# XDG user folders.  This user-data never got them (no first-login
+# xdg-user-dirs run), and the camera's video recording fails with "Capture
+# failed" when /home/phablet/Videos is missing; the gallery and music apps
+# look for theirs too.  Create any that are missing, owned by phablet.
+for d in Desktop Documents Downloads Music Pictures Videos; do
+    [ -d "/home/phablet/$d" ] || { mkdir -p "/home/phablet/$d" && chown 32011:32011 "/home/phablet/$d"; }
+done
+
+# --- performance -----------------------------------------------------------
+
+# zram swap.  zram-touch.service only enables swap once the Android container
+# has sized /dev/zram0, which this container never does (disksize stays 0), so
+# the phone ran with no swap at all - 40 MB free with Waydroid up.
+if [ -b /dev/zram0 ] && ! grep -q zram0 /proc/swaps; then
+    if [ "$(cat /sys/block/zram0/disksize)" = 0 ]; then
+        echo lzo > /sys/block/zram0/comp_algorithm 2>/dev/null
+        echo 2147483648 > /sys/block/zram0/disksize
+    fi
+    mkswap /dev/zram0 >/dev/null && swapon -p 100 /dev/zram0
+    echo 0 > /proc/sys/vm/page-cluster   # zram: no readahead of swap pages
+fi
+
+# UFS with cfq, the kernel default here, is slow for flash; deadline is what
+# the vendor sets on Android once its post-boot script runs.
+for q in /sys/block/sd?/queue/scheduler; do
+    grep -q deadline "$q" && echo deadline > "$q"
+done
+
+# Touch boost.  Android's framework asks the perf HAL for a boost on every
+# touch; nothing does that on Ubuntu Touch.  The kernel's own input boost only
+# raised the little cluster (0:1324800); Lomiri renders on the big one.
+P=/sys/module/cpu_boost/parameters
+if [ -d $P ]; then
+    echo "0:1324800 4:1574400" > $P/input_boost_freq
+    echo 150 > $P/input_boost_ms
+fi
+
+# cnss_diag: Qualcomm's WLAN diagnostics logger, ~4% CPU all the time, and
+# nobody reads its output here.
+lxc-attach -n android -- /system/bin/setprop ctl.stop vendor.cnss_diag 2>/dev/null
+lxc-attach -n android -- /system/bin/setprop ctl.stop cnss_diag 2>/dev/null
+
+# Vendor services that can never start on this Halium system (MIUI-only
+# libraries missing: vsim, tida, mtd, mlipay, misys, mfidoca, touchfeature,
+# citsensor, cnd, atfwd, imsrcsd, and duplicate provider/omx entries) were
+# restarted by init every five seconds forever.  Stop whatever is still
+# "restarting" at two checks six seconds apart, once the container settled.
+A="lxc-attach -n android --"
+{
+    sleep 30
+    loop1=$($A /system/bin/getprop | sed -n 's/^\[init\.svc\.\(.*\)\]: \[restarting\]$/\1/p')
+    sleep 6
+    loop2=$($A /system/bin/getprop | sed -n 's/^\[init\.svc\.\(.*\)\]: \[restarting\]$/\1/p')
+    # imsrcsd (RCS) runs ~5 s before aborting, so it is rarely caught
+    # "restarting"; stop it by name (it woke the phone every 5 s).
+    $A /system/bin/setprop ctl.stop vendor.imsrcsservice
+    for s in $loop1; do
+        echo "$loop2" | grep -qx "$s" || continue
+        $A /system/bin/setprop ctl.stop "$s"
+        echo "device-hacks: stopped crash-looping service $s"
+    done
+
+    # vendor.camera.aux.packagelist (tele and IR cameras) is set on early-boot
+    # by the provider rc that dipper-chi-override.service binds; no restart here.
+}
+
+# The loops above end on false tests; do not report that as a failure.
+exit 0

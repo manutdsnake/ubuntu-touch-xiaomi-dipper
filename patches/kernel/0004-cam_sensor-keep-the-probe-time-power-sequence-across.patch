@@ -1,0 +1,46 @@
+From d6882e1b42880ee0aa9705aabe2460a1cc9de180 Mon Sep 17 00:00:00 2001
+From: manut <manutdsnake@gmail.com>
+Date: Thu, 24 Sep 2026 22:54:16 +0200
+Subject: [PATCH 4/5] cam_sensor: keep the probe-time power sequence across
+ shutdown (Mi 8 IR camera)
+
+---
+ .../cam_sensor/cam_sensor_core.c                  | 15 +++++++--------
+ 1 file changed, 7 insertions(+), 8 deletions(-)
+
+diff --git a/drivers/media/platform/msm/camera/cam_sensor_module/cam_sensor/cam_sensor_core.c b/drivers/media/platform/msm/camera/cam_sensor_module/cam_sensor/cam_sensor_core.c
+index 5b2a0ebc7..3cf2e14e2 100644
+--- a/drivers/media/platform/msm/camera/cam_sensor_module/cam_sensor/cam_sensor_core.c
++++ b/drivers/media/platform/msm/camera/cam_sensor_module/cam_sensor/cam_sensor_core.c
+@@ -614,8 +614,6 @@ static uint16_t cam_sensor_id_by_mask(struct cam_sensor_ctrl_t *s_ctrl,
+ 
+ void cam_sensor_shutdown(struct cam_sensor_ctrl_t *s_ctrl)
+ {
+-	struct cam_sensor_power_ctrl_t *power_info =
+-		&s_ctrl->sensordata->power_info;
+ 	int rc = 0;
+ 
+ 	s_ctrl->is_probe_succeed = 0;
+@@ -632,12 +630,13 @@ void cam_sensor_shutdown(struct cam_sensor_ctrl_t *s_ctrl)
+ 	s_ctrl->bridge_intf.device_hdl = -1;
+ 	s_ctrl->bridge_intf.link_hdl = -1;
+ 	s_ctrl->bridge_intf.session_hdl = -1;
+-	kfree(power_info->power_setting);
+-	kfree(power_info->power_down_setting);
+-	power_info->power_setting = NULL;
+-	power_info->power_down_setting = NULL;
+-	power_info->power_setting_size = 0;
+-	power_info->power_down_setting_size = 0;
++	/*
++	 * Keep the probe-time power sequence.  CamX closes a sensor's subdev
++	 * while it is still acquired (the Mi 8's IR camera does, on every
++	 * session end) and then acquires it again without a new probe; with
++	 * the arrays freed here that acquire has no power sequence at all and
++	 * the sensor never powers up.  A new probe replaces them anyway.
++	 */
+ 	s_ctrl->streamon_count = 0;
+ 	s_ctrl->streamoff_count = 0;
+ 	s_ctrl->sensor_state = CAM_SENSOR_INIT;
+-- 
+2.53.0
+

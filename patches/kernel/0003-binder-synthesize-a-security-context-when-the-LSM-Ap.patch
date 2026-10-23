@@ -1,0 +1,89 @@
+From 648121d9e2712e74498d8cf3edbac8dc8f9a8525 Mon Sep 17 00:00:00 2001
+From: manut <manutdsnake@gmail.com>
+Date: Thu, 24 Sep 2026 22:53:59 +0200
+Subject: [PATCH 3/5] binder: synthesize a security context when the LSM
+ (AppArmor) cannot provide one
+
+Android 16's servicemanager requires a context on every transaction; AppArmor
+on this kernel has no secid_to_secctx. Same fix as the Mi 9 port.
+---
+ drivers/android/binder.c | 40 +++++++++++++++++++++++++++++++++-------
+ 1 file changed, 33 insertions(+), 7 deletions(-)
+
+diff --git a/drivers/android/binder.c b/drivers/android/binder.c
+index 20356105e..9b34b11f0 100644
+--- a/drivers/android/binder.c
++++ b/drivers/android/binder.c
+@@ -3016,6 +3016,7 @@ static void binder_transaction(struct binder_proc *proc,
+ 	int t_debug_id = atomic_inc_return(&binder_last_id);
+ 	char *secctx = NULL;
+ 	u32 secctx_sz = 0;
++	bool secctx_synth = false;	/* halium: made up here, free with kfree */
+ 
+ 	e = binder_transaction_log_add(&binder_transaction_log);
+ 	e->debug_id = t_debug_id;
+@@ -3252,10 +3253,30 @@ static void binder_transaction(struct binder_proc *proc,
+ 		security_task_getsecid(proc->tsk, &secid);
+ 		ret = security_secid_to_secctx(secid, &secctx, &secctx_sz);
+ 		if (ret) {
+-			return_error = BR_FAILED_REPLY;
+-			return_error_param = ret;
+-			return_error_line = __LINE__;
+-			goto err_get_secctx_failed;
++			/*
++			 * halium: the active LSM cannot describe a task as a
++			 * security context - AppArmor on this kernel has no
++			 * secid_to_secctx hook (5.x AppArmor does), so this is
++			 * -EOPNOTSUPP for every transaction to a context manager
++			 * registered with FLAT_BINDER_FLAG_TXN_SECURITY_CTX, i.e.
++			 * every call into servicemanager and vndservicemanager on
++			 * a security=apparmor boot.  Failing the transaction
++			 * (upstream) took down every vendor HAL; delivering it
++			 * with no context (first attempt) trips Android 16's
++			 * servicemanager, which CHECK()s that a context always
++			 * arrives from another process.  So hand it a fixed one.
++			 * The string is only ever fed to libselinux by userspace,
++			 * which on this port answers as permissive anyway.
++			 */
++			secctx = kstrdup("u:r:kernel:s0", GFP_KERNEL);
++			if (!secctx) {
++				return_error = BR_FAILED_REPLY;
++				return_error_param = -ENOMEM;
++				return_error_line = __LINE__;
++				goto err_get_secctx_failed;
++			}
++			secctx_sz = strlen(secctx) + 1;	/* SELinux counts the NUL too */
++			secctx_synth = true;
+ 		}
+ 		added_size = ALIGN(secctx_sz, sizeof(u64));
+ 		extra_buffers_size += added_size;
+@@ -3294,7 +3315,10 @@ static void binder_transaction(struct binder_proc *proc,
+ 		binder_alloc_copy_to_buffer(&target_proc->alloc,
+ 					    t->buffer, buf_offset,
+ 					    secctx, secctx_sz);
+-		security_release_secctx(secctx, secctx_sz);
++		if (secctx_synth)
++			kfree(secctx);
++		else
++			security_release_secctx(secctx, secctx_sz);
+ 		secctx = NULL;
+ 	}
+ 	t->buffer->debug_id = t->debug_id;
+@@ -3616,10 +3640,12 @@ static void binder_transaction(struct binder_proc *proc,
+ 	t->buffer->transaction = NULL;
+ 	binder_alloc_free_buf(&target_proc->alloc, t->buffer);
+ err_binder_alloc_buf_failed:
++err_get_secctx_failed:
+ err_bad_extra_size:
+-	if (secctx)
++	if (secctx && secctx_synth)
++		kfree(secctx);
++	else if (secctx)
+ 		security_release_secctx(secctx, secctx_sz);
+-err_get_secctx_failed:
+ 	kfree(tcomplete);
+ 	binder_stats_deleted(BINDER_STAT_TRANSACTION_COMPLETE);
+ err_alloc_tcomplete_failed:
+-- 
+2.53.0
+

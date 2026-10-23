@@ -1,0 +1,21 @@
+[Unit]
+Description=Quiet CamX logging (the vendor file logs every preview frame)
+Documentation=file:///etc/dipper/camxoverridesettings.txt
+# The vendor's camxoverridesettings.txt with overrideLogLevels=0x0 and
+# systemLogEnable=FALSE, nothing else changed. With overrideLogLevels=7 the
+# camera HAL formats and sends hundreds of debug/error lines per second of
+# preview to logd, which costs CPU in both and slows every camera open/switch.
+DefaultDependencies=no
+After=mount-android-partitions.service halium-android-partitions.service
+Before=lxc-android-config.service
+ConditionPathExists=/var/lib/lxc/android/rootfs/vendor/etc/camera/camxoverridesettings.txt
+ConditionPathExists=/etc/dipper/camxoverridesettings.txt
+
+[Service]
+Type=oneshot
+RemainAfterExit=yes
+ExecStart=/bin/mount --bind /etc/dipper/camxoverridesettings.txt /var/lib/lxc/android/rootfs/vendor/etc/camera/camxoverridesettings.txt
+ExecStop=-/bin/umount /var/lib/lxc/android/rootfs/vendor/etc/camera/camxoverridesettings.txt
+
+[Install]
+WantedBy=sysinit.target

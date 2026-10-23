@@ -1,0 +1,13 @@
+[Unit]
+Description=Bluetooth headphones at full hardware volume, slider controls loudness
+BindsTo=pulseaudio.service
+After=pulseaudio.service
+ConditionUser=!root
+
+[Service]
+ExecStart=/usr/libexec/dipper-bt-volume
+Restart=on-failure
+RestartSec=3
+
+[Install]
+WantedBy=pulseaudio.service

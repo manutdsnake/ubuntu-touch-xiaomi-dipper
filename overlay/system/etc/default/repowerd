@@ -1,0 +1,3 @@
+# The Android lights HAL on dipper does not drive the panel correctly through
+# repowerd, so use the sysfs backlight backend instead.
+REPOWERD_BACKLIGHT_BACKEND=sysfs

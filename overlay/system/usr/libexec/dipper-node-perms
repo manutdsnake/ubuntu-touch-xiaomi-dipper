@@ -1,0 +1,65 @@
+#!/bin/sh
+# Hand the phablet user the sysfs nodes Ubuntu drives directly.
+#
+# Android's ueventd owns these and leaves them root- or system-owned as the
+# container comes up, while repowerd and the indicators run as phablet, so every
+# write fails with EACCES and the feature simply looks dead.  The same class of
+# bug hid the GPU (/dev/ion, /dev/kgsl-3d0) and WiFi (/dev/wlan).  The real fix
+# is to work out why the vendor ueventd.rc rules are not applied at all.
+#
+# The container recreates these late, so retry for a while rather than assume
+# they exist.
+nodes="
+/sys/class/backlight/panel0-backlight/brightness
+/sys/class/leds/led:torch_0/brightness
+/sys/class/leds/led:torch_1/brightness
+/sys/class/leds/led:torch_2/brightness
+/sys/class/leds/led:switch_0/brightness
+/sys/class/leds/led:switch_1/brightness
+/sys/class/leds/led:switch_2/brightness
+"
+
+for _ in 1 2 3 4 5 6 7 8 9 10; do
+    missing=0
+    for n in $nodes; do
+        if [ -e "$n" ]; then
+            chown root:phablet "$n" 2>/dev/null
+            chmod 0664 "$n" 2>/dev/null
+        else
+            missing=1
+        fi
+    done
+    [ "$missing" -eq 0 ] && break
+    sleep 2
+done
+
+for n in $nodes; do
+    [ -e "$n" ] && ls -l "$n"
+done
+
+# Elliptic ultrasound proximity: sensors.elliptic.so (sensors HAL, user
+# system) reads proximity events from /dev/elliptic0.  The vendor's
+# init.target.rc chmods these 0644 in on-post-fs, which never reaches the
+# host's /dev here, so they stayed root 0600 and the sensor could never report.
+for n in /dev/elliptic0 /dev/elliptic1; do
+    [ -e "$n" ] && chown 1000:1000 "$n" && chmod 0644 "$n" && ls -l "$n"
+done
+
+# LineageOS' power HAL (libperfmgr) starts by writing 0 to sched_boost, and this
+# kernel rejects a write that does not change the boost state (EINVAL for 0 when
+# already 0).  On Android init.qcom.power.rc turns the boost on at boot first;
+# here nothing did, so the HAL retried every 500 ms forever - a wakeup and log
+# line each time.  Once the HAL is seen failing, turn the boost on: its next
+# retry turns it off and succeeds, and it stops.  Only then, so a boost is never
+# left on.
+i=0
+while [ "$i" -lt 30 ]; do
+    if lxc-attach -n android -- /system/bin/logcat -d -b main -t 50 2>/dev/null \
+            | grep -q 'Failed to write to node: /proc/sys/kernel/sched_boost'; then
+        echo 1 > /proc/sys/kernel/sched_boost && sleep 2
+        echo "sched_boost handed back to the power HAL (now $(cat /proc/sys/kernel/sched_boost))"
+        break
+    fi
+    i=$((i + 1)); sleep 2
+done
+exit 0

@@ -1,0 +1,24 @@
+#!/bin/sh
+# Keep Qualcomm's time_daemon from starting in the Android container.
+#
+# It sets the system clock from the PMIC RTC (counts from 1970, not writable)
+# plus its own offset store in /data/vendor/time, which only Android's
+# framework fills - empty here.  Started ~12 s into boot it threw the clock
+# back to 1970 after timekeeper.service had restored the right time; only NTP
+# fixed it, and never without a network.  timekeeper keeps the offset instead.
+#
+# The service is defined twice: vendor/etc/init/init.time_daemon.rc (replaced
+# by /etc/dipper/init.time_daemon.rc, "disabled") and hw/init.qcom.rc, which
+# init parses first, so that definition won.  Bind a copy of init.qcom.rc
+# without the service block, made from the vendor's own file at every boot.
+set -e
+V=/var/lib/lxc/android/rootfs/vendor/etc/init
+R=/run/dipper-init
+mkdir -p "$R"
+mount --bind /etc/dipper/init.time_daemon.rc "$V/init.time_daemon.rc"
+if [ -f "$V/hw/init.qcom.rc" ]; then
+    awk '/^service time_daemon /{skip=1; next} skip && /^[^ \t]/{skip=0} !skip' \
+        "$V/hw/init.qcom.rc" > "$R/init.qcom.rc"
+    chmod 0644 "$R/init.qcom.rc"
+    mount --bind "$R/init.qcom.rc" "$V/hw/init.qcom.rc"
+fi

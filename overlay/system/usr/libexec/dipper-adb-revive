@@ -1,0 +1,37 @@
+#!/bin/sh
+# Bring adb back when adbd loses its USB function and never gets it back.
+#
+# With the phone locked after boot, mtp-server does not answer yet, the PC
+# resets the device a few seconds after enumeration, adbd sees
+# FUNCTIONFS_DISABLE, tears its connection down ("UsbFfs: offline") and no
+# FUNCTIONFS_ENABLE ever follows - the PC lists the phone as "offline" until the
+# cable is replugged.  Re-selecting the USB mode rebinds the gadget and adbd
+# comes back at once.  Only acts when adb was the mode's job and it went
+# offline without recovering; at most three times per boot.
+# Polled for the first three minutes after boot only (the case above happens
+# right after the first enumeration); a later replug brings adbd back itself.
+tries=0
+n=0
+while [ "$n" -lt 18 ]; do
+    n=$((n + 1)); sleep 10
+    last=$(journalctl -b -o cat _COMM=adbd 2>/dev/null | grep -E 'FUNCTIONFS_ENABLE|UsbFfs: offline' | tail -n 1)
+    case "$last" in *"UsbFfs: offline"*) ;; *) continue ;; esac
+    mode=$(usb_moded_util -q 2>/dev/null | sed -n 's/^mode = //p')
+    case "$mode" in *adb*) ;; *) continue ;; esac
+    tries=$((tries + 1))
+    [ "$tries" -gt 3 ] && { echo "adb went offline again, giving up this boot"; exit 0; }
+    echo "adbd offline without re-enable; re-selecting USB mode $mode ($tries/3)"
+    usb_moded_util -s charging_only >/dev/null 2>&1
+    # Right after the unbind the UDC can briefly be gone ("UDC: write failure:
+    # No such device") and usb-moded then falls back to charging_only: retry
+    # until the mode really is back.
+    k=0
+    while [ "$k" -lt 5 ]; do
+        k=$((k + 1)); sleep 4
+        usb_moded_util -s "$mode" >/dev/null 2>&1
+        sleep 2
+        [ "$(usb_moded_util -q 2>/dev/null | sed -n 's/^mode = //p')" = "$mode" ] && break
+    done
+    echo "USB mode now $(usb_moded_util -q 2>/dev/null | sed -n 's/^mode = //p')"
+done
+exit 0

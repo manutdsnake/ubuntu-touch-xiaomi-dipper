@@ -1,0 +1,41 @@
+#!/bin/sh
+# Give Waydroid a view of the host /vendor without the host's copies of system
+# libraries.
+#
+# Waydroid (HALIUM_* vendor types) bind-mounts the host /vendor into its
+# container as /vendor_extra so Android there can load the host GPU stack
+# (Adreno EGL/Vulkan, gralloc).  Vendors from Android 15 on no longer use VNDK
+# and ship their own copies of libbinder, libhidlbase and friends; Waydroid's
+# lineage-20 HALs then picked those up and failed to link (libapexsupport.so
+# not found, configureRpcThreadpool missing) - no composer, no boot.  Here an
+# overlayfs whiteout hides every host vendor library that Waydroid's system
+# image also has, except libc++ (the newer copy is backwards compatible, and
+# the host gralloc needs its newer symbols).  lxc.py mounts /run/waydroid-vendor
+# instead of /vendor when it exists.
+set -eu
+V=/android/vendor
+W=/run/waydroid-vendor-wh
+M=/run/waydroid-vendor
+IMG=/var/lib/waydroid/images/system.img
+KEEP="libc++.so"
+
+grep -q " $M overlay " /proc/mounts && umount "$M"
+[ -f "$IMG" ] && [ -d "$V/lib64" ] || exit 0
+
+S=$(mktemp -d)
+mount -o ro,loop "$IMG" "$S"
+SYS=$S/system; [ -d "$SYS/lib64" ] || SYS=$S
+rm -rf "$W"; mkdir -p "$M"
+n=0
+for a in lib lib64; do
+    mkdir -p "$W/$a"
+    for f in "$V/$a"/*.so; do
+        b=$(basename "$f")
+        [ -e "$SYS/$a/$b" ] || continue
+        case " $KEEP " in *" $b "*) continue ;; esac
+        mknod "$W/$a/$b" c 0 0; n=$((n + 1))
+    done
+done
+umount "$S"; rmdir "$S"
+mount -t overlay overlay -o "lowerdir=$W:$V" "$M"
+echo "waydroid vendor view: $n host libraries hidden"

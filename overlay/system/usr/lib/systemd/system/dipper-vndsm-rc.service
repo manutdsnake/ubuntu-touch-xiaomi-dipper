@@ -1,0 +1,25 @@
+[Unit]
+Description=Let vndservicemanager survive without selinuxfs: patched rc plus an LD_PRELOAD shim
+Documentation=file:///etc/dipper/vndservicemanager.rc
+DefaultDependencies=no
+After=mount-android-partitions.service halium-android-partitions.service
+Before=lxc-android-config.service
+ConditionPathExists=/var/lib/lxc/android/rootfs/vendor/etc/init/vndservicemanager.rc
+ConditionPathExists=/etc/dipper/vndservicemanager.rc
+ConditionPathExists=/usr/lib/dipper/android/libdipper_selinux_shim.so
+ConditionPathIsDirectory=/var/lib/lxc/android/rootfs/vendor/lost+found
+
+[Service]
+Type=oneshot
+RemainAfterExit=yes
+# init refuses any rc file that is group- or other-writable ("Skipping insecure
+# file"), so the source must stay root:root 0644 - the same mode as the vendor's.
+ExecStart=/bin/mount --bind /etc/dipper/vndservicemanager.rc /var/lib/lxc/android/rootfs/vendor/etc/init/vndservicemanager.rc
+# The shim vndservicemanager preloads (see the rc).  lost+found is the one empty
+# directory under the read-only vendor partition; binding over it hides nothing.
+ExecStart=/bin/mount --bind /usr/lib/dipper/android /var/lib/lxc/android/rootfs/vendor/lost+found
+ExecStop=-/bin/umount /var/lib/lxc/android/rootfs/vendor/lost+found
+ExecStop=-/bin/umount /var/lib/lxc/android/rootfs/vendor/etc/init/vndservicemanager.rc
+
+[Install]
+WantedBy=sysinit.target

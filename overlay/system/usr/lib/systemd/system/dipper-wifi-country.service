@@ -1,0 +1,12 @@
+[Unit]
+Description=Set the WiFi regulatory domain from the SIM's country
+After=ofono.service dipper-wlan.service network.target
+Wants=dipper-wlan.service
+
+[Service]
+Type=oneshot
+# ofono needs a moment to register; try for two minutes, then give up quietly.
+ExecStart=/bin/sh -c 'i=0; while [ $i -lt 24 ]; do out=$(/usr/libexec/dipper-wifi-country); echo "$out"; case "$out" in *SIM*) exit 0;; esac; i=$((i+1)); sleep 5; done; exit 0'
+
+[Install]
+WantedBy=multi-user.target

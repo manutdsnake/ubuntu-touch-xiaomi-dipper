@@ -1,0 +1,26 @@
+#!/bin/sh
+# Hold ofono until the Android radio HAL is actually registered.
+#
+# ofono starts about 11 s into the boot, while init is still parsing qcrild.rc;
+# android.hardware.radio@1.0::IRadio/slot1 registers with hwservicemanager only
+# afterwards, and ofono's binder plugin does not pick a slot up that appears
+# later.  The result was an empty `list-modems` at boot and "No network" with a
+# SIM in, while `systemctl restart ofono` gave a registered LTE modem at once.
+#
+# Poll the HAL registry from inside the container (a clean environment - the
+# host's LD_PRELOAD breaks Android binaries).  Give up after the timeout and let
+# ofono start anyway, so a broken container does not also block telephony's
+# error path.
+timeout=${CEPHEUS_RADIO_TIMEOUT:-90}
+i=0
+while [ "$i" -lt "$timeout" ]; do
+    if env -u LD_PRELOAD lxc-attach --clear-env -n android -- /system/bin/lshal --neat 2>/dev/null \
+            | grep -q 'android.hardware.radio@1.0::IRadio/slot1'; then
+        echo "radio HAL registered after ${i}s"
+        exit 0
+    fi
+    i=$((i + 1))
+    sleep 1
+done
+echo "radio HAL not registered after ${timeout}s, starting ofono anyway"
+exit 0

@@ -1,0 +1,21 @@
+#!/bin/sh
+# Give the Android container working DNS.
+#
+# Its bionic resolves names through netd, and netd knows no DNS servers because
+# nothing on a Halium port registers a network with it.  Every getaddrinfo()
+# inside the container fails, which is why the GNSS HAL's XTRA/NTP download
+# ("LocSvc_xtra2: DNS resolution on 1.android.pool.ntp.org failed") never
+# succeeds and assisted GPS stays cold.  Push the host's resolvers into netd
+# whenever a connection comes up or its DHCP lease changes.  Verified: after
+# `ndc resolver setnetdns` a bionic ping of pool.ntp.org resolves.
+case "$2" in up|dhcp4-change|dhcp6-change|connectivity-change) ;; *) exit 0 ;; esac
+servers="$IP4_NAMESERVERS"
+[ -n "$servers" ] || servers=$(resolvectl dns 2>/dev/null | awk '/Link [0-9]+ \(/ {for (i=4;i<=NF;i++) print $i}' | head -3 | tr '\n' ' ')
+[ -n "$servers" ] || exit 0
+# netd takes several; add public resolvers after the network's own so a LAN
+# resolver that ignores the container (or goes away) does not strand XTRA.
+servers="$servers 1.1.1.1 8.8.8.8"
+for netid in 0 1; do
+    env -u LD_PRELOAD lxc-attach --clear-env -n android -- /system/bin/ndc resolver setnetdns "$netid" "" $servers >/dev/null 2>&1
+done
+logger -t dipper-android-dns "netd resolvers set to: $servers"

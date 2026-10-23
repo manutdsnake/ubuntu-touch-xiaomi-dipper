@@ -1,0 +1,21 @@
+[Unit]
+Description=Keep Qualcomm time_daemon from resetting the clock to the RTC (1970)
+Documentation=file:///etc/dipper/init.time_daemon.rc
+DefaultDependencies=no
+After=mount-android-partitions.service halium-android-partitions.service
+Before=lxc-android-config.service
+ConditionPathExists=/var/lib/lxc/android/rootfs/vendor/etc/init/init.time_daemon.rc
+ConditionPathExists=/etc/dipper/init.time_daemon.rc
+
+[Service]
+Type=oneshot
+RemainAfterExit=yes
+# See the script: binds the disabled init.time_daemon.rc and an init.qcom.rc
+# without its time_daemon service (init skips group/other-writable rc files,
+# both are root:root 0644).
+ExecStart=/usr/libexec/dipper-time-daemon-rc
+ExecStop=-/bin/umount /var/lib/lxc/android/rootfs/vendor/etc/init/hw/init.qcom.rc
+ExecStop=-/bin/umount /var/lib/lxc/android/rootfs/vendor/etc/init/init.time_daemon.rc
+
+[Install]
+WantedBy=sysinit.target

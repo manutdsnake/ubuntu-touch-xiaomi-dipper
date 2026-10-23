@@ -1,0 +1,2 @@
+# dipper: fontconfig reads (denials in the log, harmless but noisy)
+/etc/fonts/** r,

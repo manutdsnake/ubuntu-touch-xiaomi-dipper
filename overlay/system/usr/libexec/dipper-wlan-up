@@ -1,0 +1,26 @@
+#!/bin/sh
+# qcacld registers /dev/wlan and deliberately does not create wlan0 until
+# something writes "ON" to it - wlan_hdd_state_ctrl_param_write() calls
+# hdd_driver_load() only then (core/hdd/src/wlan_hdd_main.c).  On Android that
+# write comes from the framework; on a Halium port nobody does it, so the
+# firmware loads, "icnss: WLAN FW is ready" appears in dmesg, and
+# NetworkManager still has no interface to manage.
+i=0
+while [ ! -c /dev/wlan ] && [ "$i" -lt 60 ]; do
+    i=$((i + 1))
+    sleep 1
+done
+[ -c /dev/wlan ] || { echo "/dev/wlan never appeared"; exit 0; }
+
+printf 'ON\n' > /dev/wlan || exit 0
+
+i=0
+while [ ! -e /sys/class/net/wlan0 ] && [ "$i" -lt 30 ]; do
+    i=$((i + 1))
+    sleep 1
+done
+[ -e /sys/class/net/wlan0 ] && echo 'wlan0 is up' || echo 'wlan0 did not appear'
+
+# Pick the regulatory domain from where the phone is (timezone at this point;
+# dipper-wifi-country.service re-runs it from the SIM once ofono registers).
+[ -x /usr/libexec/dipper-wifi-country ] && /usr/libexec/dipper-wifi-country

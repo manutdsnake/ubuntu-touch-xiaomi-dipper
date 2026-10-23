@@ -1,0 +1,16 @@
+# UBports recovery fstab for the Mi 8 on Halium 16 / LineageOS 22.2.
+# system, vendor and cust are the retrofit super (LineageOS' dynamic
+# partitions, metadata in the physical system partition, see
+# init.recovery.qcom.rc). Only the logical system and vendor are listed; the
+# rootfs goes into the logical system.
+# userdata is plain ext4 (Ubuntu Touch, no Android encryption); the UBports
+# recovery mounts it on /cache itself for system-image-upgrader, so no cache line.
+# /dev/block/by-name: this recovery has no bootdevice symlink.
+#<src>                                     <mnt_point>  <type> <mnt_flags and options>                               <fs_mgr_flags>
+system                          /system      ext4   ro                                                    wait,logical
+vendor                          /vendor      ext4   ro                                                    wait,logical
+/dev/block/by-name/boot         /boot        emmc   defaults                                              defaults
+/dev/block/by-name/recovery     /recovery    emmc   defaults                                              defaults
+/dev/block/by-name/userdata     /data        ext4   nosuid,nodev,barrier=1,noauto_da_alloc,noatime        wait
+/dev/block/by-name/misc         /misc        emmc   defaults                                              defaults
+/dev/block/by-name/modem        /firmware    vfat   ro,shortname=lower,uid=0,gid=1000,dmask=227,fmask=337  wait

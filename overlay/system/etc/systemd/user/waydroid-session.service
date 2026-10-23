@@ -1,0 +1,10 @@
+[Unit]
+Description=Waydroid session (started on demand by /usr/libexec/waydroid-show-ui)
+# Its own unit, so the session outlives the launcher: started from inside the
+# launcher app, systemd stopped the session together with that app's unit the
+# moment the launcher exited.  Not enabled at login: frozen while no Android
+# window is shown, but it holds RAM; the launcher starts it when needed.
+ConditionPathExists=/var/lib/waydroid/waydroid.cfg
+
+[Service]
+ExecStart=/usr/bin/waydroid session start

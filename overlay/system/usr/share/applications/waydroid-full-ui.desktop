@@ -1,0 +1,17 @@
+[Desktop Entry]
+Type=Application
+Version=1.0
+Name=Waydroid
+GenericName=Android
+Comment=Android preko cijelog ekrana
+Exec=/usr/libexec/waydroid-show-ui
+Icon=/usr/share/icons/hicolor/512x512/apps/waydroid.png
+Terminal=false
+Categories=Utility;
+X-Purism-FormFactor=Workstation;Mobile;
+X-Lomiri-Supported-Orientations=portrait;landscape;
+Actions=stop;
+
+[Desktop Action stop]
+Name=Zaustavi Waydroid
+Exec=waydroid session stop

@@ -1,0 +1,13 @@
+[Unit]
+Description=Stop the Android audio HAL service (PulseAudio owns the DSP)
+After=lxc-android-config.service
+Before=user@32011.service
+
+[Service]
+Type=oneshot
+RemainAfterExit=yes
+TimeoutStartSec=90
+ExecStart=/usr/libexec/dipper-stop-android-audio
+
+[Install]
+WantedBy=multi-user.target

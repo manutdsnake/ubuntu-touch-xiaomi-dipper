@@ -1,0 +1,12 @@
+[Unit]
+Description=Suppress spurious key events from the fpc fingerprint reader
+After=lxc-android-config.service
+Requires=lxc-android-config.service
+
+[Service]
+ExecStart=/usr/libexec/uinput-fpc-key-disable
+Restart=always
+RestartSec=5
+
+[Install]
+WantedBy=multi-user.target

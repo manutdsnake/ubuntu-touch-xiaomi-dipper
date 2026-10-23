@@ -1,0 +1,26 @@
+<?xml version="1.0" encoding="ISO-8859-1"?>
+<!-- Controls appended to existing paths by tools/merge-mixer-overlay.py.
+     Speakerphone in calls: the 64-bit HAL enables voice-speaker-2 (or
+     voice-speaker) but never the "voicemmode*-call speaker" usecase paths - the
+     backend suffix is not applied to that device - so the voice stream stayed
+     on SLIMBUS, where the Mi 8 has no speaker, and the TAS2557 on QUAT_MI2S
+     never started.  Route both voice sessions to QUAT_MI2S from the device
+     path itself; disabling the device resets them.  No VOC_EXT_EC MUX =
+     QUAT_MI2S_TX here: that starts the TX side of the same MI2S at 24 bit
+     against the 16-bit voice RX, the BE hw_params fail ("Error mismatch in HW
+     params") and the whole voice path - microphone too - goes down. -->
+<mixer>
+    <!-- Default (applied when the HAL starts): the TAS2557's QUAT_MI2S TX
+         side comes up at 24 bit while the HAL runs the RX side at 16 bit; a
+         voice call starts both and the MI2S rejects the mismatch ("Error
+         mismatch in HW params", QUAT_MI2S_TX BE failed) - silent speakerphone. -->
+    <ctl name="QUAT_MI2S_TX Format" value="S16_LE" />
+    <path name="voice-speaker-2">
+        <ctl name="QUAT_MI2S_RX_Voice Mixer VoiceMMode1" value="1" />
+        <ctl name="QUAT_MI2S_RX_Voice Mixer VoiceMMode2" value="1" />
+    </path>
+    <path name="voice-speaker">
+        <ctl name="QUAT_MI2S_RX_Voice Mixer VoiceMMode1" value="1" />
+        <ctl name="QUAT_MI2S_RX_Voice Mixer VoiceMMode2" value="1" />
+    </path>
+</mixer>

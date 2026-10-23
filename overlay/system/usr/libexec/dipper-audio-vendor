@@ -1,0 +1,45 @@
+#!/bin/sh
+# Give PulseAudio's in-process 64-bit audio HAL what the LineageOS vendor lacks.
+#
+# LineageOS 22.2 runs audio as a 32-bit HAL, so its vendor ships the ACDB
+# calibration libraries (libacdbloader & co.) for /vendor/lib only.  PulseAudio
+# loads the 64-bit /vendor/lib64/hw/audio.primary.sdm845.so, which dlopens a
+# 64-bit libacdbloader.so - missing, so it ran without calibration and opened no
+# output stream at all.  The 64-bit copies come from the Mi 8's own MIUI V11
+# vendor (same SDM845 ACDB SW), read-only overlaid on the host's /android/vendor;
+# mount propagation carries them into the container's /vendor as well.
+set -e
+L=/usr/lib/dipper
+V=/android/vendor
+
+if ! grep -q " $V/lib64 overlay " /proc/mounts; then
+    mount -t overlay overlay -o "lowerdir=$L/vendor-lib64:$V/lib64" "$V/lib64"
+fi
+
+# Mixer paths with the vendor's static overlay merged in
+# (tools/merge-mixer-overlay.py): the 64-bit HAL cannot apply the overlay
+# itself, and without it used generic DMIC paths - the Mi 8 has analog mics,
+# so every recording was silence.  Only mixer_paths_tavil.xml is replaced.
+if ! grep -q " $V/etc overlay " /proc/mounts; then
+    E=/run/dipper-vendor-etc
+    mkdir -p "$E"
+    cp "$L/vendor-etc/mixer_paths_tavil.xml" "$E"/
+    # Speakerphone in calls: a backend for SND_DEVICE_OUT_VOICE_SPEAKER_2.
+    cp "$L/vendor-etc/audio_platform_info.xml" "$E"/
+    # Quiet CamX logging, see dipper-camx-settings.service: this overlay covers
+    # vendor/etc, so a bind mount of the file underneath it is never seen.
+    if [ -f /etc/dipper/camxoverridesettings.txt ]; then
+        mkdir -p "$E/camera"
+        cp /etc/dipper/camxoverridesettings.txt "$E/camera/"
+        chmod 0755 "$E/camera"; chmod 0644 "$E/camera/camxoverridesettings.txt"
+    fi
+    chmod 0644 "$E"/*.xml
+    mount -t overlay overlay -o "lowerdir=$E:$V/etc" "$V/etc"
+fi
+
+# ueventd never applies the vendor rules here; the ACDB loader in PulseAudio
+# (user phablet, group audio) needs these.
+for n in msm_audio_cal msm_rtac msm_hweffects; do
+    [ -e /dev/$n ] && chgrp audio /dev/$n && chmod 0660 /dev/$n
+done
+exit 0

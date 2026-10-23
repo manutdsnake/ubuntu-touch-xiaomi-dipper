@@ -1,0 +1,15 @@
+[Unit]
+Description=Mediate access to biometric devices
+Wants=lxc-android-config.service
+After=lxc-android-config.service
+
+[Service]
+Type=dbus
+BusName=com.ubports.biometryd.Service
+ExecStart=/usr/bin/biometryd run
+Restart=always
+RestartPreventExitStatus=78
+SuccessExitStatus=78
+
+[Install]
+WantedBy=multi-user.target

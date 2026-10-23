@@ -1,0 +1,10 @@
+# UBports' shared pipeline for Halium GSI ports: builds the kernel, boot,
+# recovery and dtbo images and device_<codename>.tar.xz (the job "build"),
+# and a flashable image set on demand.
+include:
+  - https://gitlab.com/ubports/porting/community-ports/halium-generic-adaptation-build-tools/-/raw/main/gsi-port-ci.yml
+
+variables:
+  # Run this repository's build.sh (umask, overlay modes, and on the Mi 9 the
+  # dtc it was tested with) instead of the tools' build.sh directly.
+  ADAPTATION_TOOLS_USE_BUILD_WRAPPER: 1

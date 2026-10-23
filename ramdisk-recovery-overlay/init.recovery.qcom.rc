@@ -1,0 +1,12 @@
+# Retrofit dynamic partitions: the LP metadata lives in the physical system
+# partition (LineageOS spreads the super over system + vendor + cust).
+# Recovery maps the logical partitions from there, and system-image-upgrader
+# makes room for the rootfs by dropping the ROM's own system_ext/product and
+# growing the logical system (ro.boot.dynamic_partitions itself comes from the
+# build tools, because the kernel command line has
+# systempart=/dev/mapper/system).
+on init
+    setprop ro.boot.super_partition system
+    setprop ro.boot.dynamic_partitions_retrofit true
+    setprop ro.systemimage.system_partition_size 4096
+    setprop ro.systemimage.remove_dynparts product,system_ext

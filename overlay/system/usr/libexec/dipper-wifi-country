@@ -1,0 +1,45 @@
+#!/bin/sh
+# Set the WiFi regulatory domain from where the phone actually is.
+#
+# The qcacld driver starts in domain "00" (world), which leaves all of 5 GHz
+# passive-scan only.  Hard-coding a country is wrong for anyone else running
+# this port, so derive it:
+#   1. from the SIM's mobile country code, via ofono (MCC -> ISO 3166 through
+#      mobile-broadband-provider-info, which the rootfs ships);
+#   2. otherwise from the system timezone (zone1970.tab);
+#   3. otherwise leave the driver as it is.
+# Runs from dipper-wlan-up (timezone only, ofono is not up yet) and again from
+# dipper-wifi-country.service once ofono has registered.
+set -u
+SP=/usr/share/mobile-broadband-provider-info/serviceproviders.xml
+ZT=/usr/share/zoneinfo/zone1970.tab
+
+mcc_to_cc() {
+    # The XML is grouped as <country code="hr"> ... <network-id mcc="219" .../>
+    # Walk it once, remembering the current country, and stop at the first hit.
+    awk -v want="$1" '
+        /<country code="/ { match($0, /code="[a-z]+"/); cc = substr($0, RSTART+6, RLENGTH-7) }
+        /<network-id mcc="/ { match($0, /mcc="[0-9]+"/); if (substr($0, RSTART+5, RLENGTH-6) == want) { print toupper(cc); exit } }
+    ' "$SP" 2>/dev/null
+}
+
+tz_to_cc() {
+    tz=$(timedatectl show -p Timezone --value 2>/dev/null)
+    [ -n "$tz" ] && [ "$tz" != "Etc/UTC" ] || return 1
+    awk -F'\t' -v tz="$tz" '$1 !~ /^#/ && $3 == tz { split($1, a, ","); print a[1]; exit }' "$ZT" 2>/dev/null
+}
+
+cc=""
+for path in /ril_0 /ril_1 /ril_2; do
+    mcc=$(dbus-send --system --print-reply --dest=org.ofono "$path" org.ofono.NetworkRegistration.GetProperties 2>/dev/null \
+          | awk '/MobileCountryCode/ { getline; gsub(/"/, "", $NF); print $NF; exit }')
+    [ -n "$mcc" ] && cc=$(mcc_to_cc "$mcc") && [ -n "$cc" ] && { src="SIM (MCC $mcc)"; break; }
+done
+if [ -z "$cc" ]; then
+    cc=$(tz_to_cc) && [ -n "$cc" ] && src="timezone" || { echo "dipper-wifi-country: no country source, leaving regulatory domain alone"; exit 0; }
+fi
+cur=$(iw reg get 2>/dev/null | awk '/^country/ { sub(":", "", $2); print $2; exit }')
+if [ "$cur" = "$cc" ]; then
+    echo "dipper-wifi-country: already $cc (from $src)"; exit 0
+fi
+iw reg set "$cc" 2>/dev/null && echo "dipper-wifi-country: regulatory domain set to $cc (from $src)"

@@ -1,0 +1,13 @@
+[Unit]
+Description=Start the qcacld WLAN driver on the dipper port
+After=lxc-android-config.service NetworkManager.service
+Wants=lxc-android-config.service
+
+[Service]
+Type=oneshot
+RemainAfterExit=yes
+TimeoutStartSec=120
+ExecStart=/usr/libexec/dipper-wlan-up
+
+[Install]
+WantedBy=multi-user.target

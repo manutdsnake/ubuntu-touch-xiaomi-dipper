@@ -1,0 +1,11 @@
+[Unit]
+Description=Re-select the USB mode when adbd loses its USB function after a host reset
+After=usb-moded.service
+Wants=usb-moded.service
+
+[Service]
+ExecStart=/usr/libexec/dipper-adb-revive
+Type=simple
+
+[Install]
+WantedBy=multi-user.target

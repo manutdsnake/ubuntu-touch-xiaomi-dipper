@@ -1,0 +1,32 @@
+#!/bin/sh
+# Back to the normal WiFi network when the hotspot is switched off.
+#
+# lomiri-indicator-network stops the hotspot by deactivating its AP
+# connection ("Lomiri"); NetworkManager records that as a user-requested
+# disconnect, and switching the hotspot on had blocked the home network the
+# same way, so the phone stayed off WiFi until the user picked a network.
+# A plain `nmcli device connect` is no good: the hotspot profile has
+# autoconnect=yes and NetworkManager picked it straight back up.  So when an
+# AP connection goes down: take autoconnect off that profile (the indicator
+# activates it explicitly), then bring up the most recently used visible
+# infrastructure network - in the background, the dispatcher waits for us.
+[ "$2" = down ] || exit 0
+[ -n "$CONNECTION_UUID" ] || exit 0
+[ "$(nmcli -g 802-11-wireless.mode connection show "$CONNECTION_UUID" 2>/dev/null)" = ap ] || exit 0
+nmcli connection modify "$CONNECTION_UUID" connection.autoconnect no
+nmcli device set "$1" autoconnect yes
+setsid sh -c '
+    dev=$0
+    sleep 2
+    nmcli device wifi rescan ifname "$dev" >/dev/null 2>&1; sleep 3
+    visible=$(nmcli -g SSID device wifi list ifname "$dev" 2>/dev/null)
+    got=$(nmcli -g TIMESTAMP,UUID,TYPE connection show | sort -rn |
+    while IFS=: read -r ts uuid type; do
+        [ "$type" = 802-11-wireless ] || continue
+        [ "$(nmcli -g 802-11-wireless.mode connection show "$uuid")" = ap ] && continue
+        ssid=$(nmcli -g 802-11-wireless.ssid connection show "$uuid")
+        echo "$visible" | grep -qxF "$ssid" || continue
+        nmcli connection up uuid "$uuid" ifname "$dev" >/dev/null 2>&1 && { echo "$ssid"; break; }
+    done)
+    logger -t dipper-hotspot "hotspot off: $dev ${got:+back on $got}${got:-no known network in range}"
+' "$1" </dev/null >/dev/null 2>&1 &

@@ -1,0 +1,15 @@
+# The vendor's init.time_daemon.rc with the service disabled and its start
+# trigger removed.
+#
+# Qualcomm's time_daemon sets the system clock at start from the PMIC RTC
+# (which counts from 1970 and cannot be written) plus its own offset store in
+# /data/vendor/time - empty here.  It started with the container ~12 s into
+# boot and threw the clock back to March 1970, after timekeeper.service had
+# already restored the right time; only NTP fixed it again, and never without
+# a network.  Ubuntu Touch keeps the offset with timekeeper instead.
+service time_daemon /vendor/bin/time_daemon
+    class main
+    user system
+    group system
+    capabilities SYS_TIME
+    disabled

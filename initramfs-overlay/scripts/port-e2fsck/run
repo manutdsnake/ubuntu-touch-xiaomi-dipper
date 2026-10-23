@@ -1,0 +1,5 @@
+#!/bin/sh
+# Ubuntu rootfs e2fsprogs 1.47, staged in initramfs for modern ext4 userdata.
+exec /scripts/port-e2fsck/lib/ld-linux-aarch64.so.1 \
+  --library-path /scripts/port-e2fsck/lib \
+  /scripts/port-e2fsck/e2fsck "$@"

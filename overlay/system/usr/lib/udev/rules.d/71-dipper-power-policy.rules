@@ -1,0 +1,2 @@
+# hvdcp_opti only while a charger is connected, see /usr/libexec/dipper-power-policy
+ACTION=="change", SUBSYSTEM=="power_supply", KERNEL=="usb", RUN+="/usr/libexec/dipper-power-policy"

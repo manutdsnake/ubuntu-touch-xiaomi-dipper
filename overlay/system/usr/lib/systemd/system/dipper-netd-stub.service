@@ -1,0 +1,18 @@
+[Unit]
+Description=Stand-in android.system.net.netd@1.1::INetd so netmgrd (and mobile data) comes up
+# netmgrd waits for the netd HAL before it opens /dev/socket/netmgr; until
+# then qcrild cannot run dsi_init and every data call fails (status 4100).
+# Register as soon as the container's hwservicemanager is up; the binary
+# exits when it cannot register yet and systemd retries.
+After=lxc-android-config.service
+Wants=lxc-android-config.service
+Before=ofono.service
+
+[Service]
+Type=simple
+ExecStart=/usr/lib/dipper/dipper-netd-stub
+Restart=always
+RestartSec=1
+
+[Install]
+WantedBy=multi-user.target

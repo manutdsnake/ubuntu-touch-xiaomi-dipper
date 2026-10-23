@@ -1,0 +1,26 @@
+#!/bin/sh
+# Keep the Android side from waking the phone ~20 times a second.
+#
+# hvdcp_opti (Qualcomm's fast-charge policy daemon: HVDCP/QC3 voltage
+# negotiation) takes its CHG_PLCY_MAIN_WL wakelock and pokes the power supply
+# nodes in a loop even with no charger connected, and it waits in epoll with
+# EPOLLWAKEUP; the Android health HAL listens to every kernel uevent the same
+# way. Every suspend attempt produces uevents (CPU hotplug, thermal zones), so
+# together they aborted almost every suspend. Run hvdcp_opti only while a
+# charger is connected; the health HAL has no client here (Ubuntu Touch reads
+# the battery from sysfs through upower), so stop it for good.
+#
+# Called by udev on USB power supply changes, and with "boot" once the
+# container is up.
+if [ "$1" = boot ]; then
+    i=0
+    while [ "$(getprop init.svc.vendor.hvdcp_opti)" != running ] && [ $i -lt 60 ]; do
+        sleep 1; i=$((i + 1))
+    done
+    setprop ctl.stop vendor.health-default
+fi
+if [ "$(cat /sys/class/power_supply/usb/online 2>/dev/null)" = 1 ]; then
+    setprop ctl.start vendor.hvdcp_opti
+else
+    setprop ctl.stop vendor.hvdcp_opti
+fi

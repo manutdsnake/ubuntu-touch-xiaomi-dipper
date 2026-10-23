@@ -1,0 +1,30 @@
+#!/bin/sh
+# Launcher for Waydroid's full UI on Lomiri ("Waydroid" icon,
+# ~/.local/share/applications/waydroid-full-ui.desktop).
+#
+# Waydroid's window belongs to a different app: Waydroid.desktop (kept hidden
+# and read-only so Waydroid does not rewrite it), which Lomiri picks from the
+# window's desktop-file hint.  This launcher starts the session if needed, asks
+# for the UI and stays alive until Android has drawn it, so Lomiri shows this
+# app's splash meanwhile instead of dropping the user on the home screen; then
+# it exits and Lomiri is left with the Waydroid window.
+session_running() {
+    waydroid status 2>/dev/null | grep -q '^Session:[[:space:]]*RUNNING'
+}
+if ! session_running; then
+    # In its own unit: started from here it would belong to this app and be
+    # stopped with it as soon as this launcher exits.
+    systemctl --user start --no-block waydroid-session.service
+    i=0
+    until session_running; do
+        i=$((i + 1)); [ $i -gt 90 ] && exit 1
+        sleep 1
+    done
+fi
+waydroid show-full-ui
+i=0
+until [ "$(waydroid prop get sys.boot_completed 2>/dev/null)" = 1 ]; do
+    i=$((i + 1)); [ $i -gt 60 ] && break
+    sleep 1
+done
+sleep 3

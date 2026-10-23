@@ -1,0 +1,13 @@
+[Unit]
+Description=Make the backlight and torch nodes writable by phablet
+After=lxc-android-config.service
+Wants=lxc-android-config.service
+
+[Service]
+Type=oneshot
+RemainAfterExit=yes
+TimeoutStartSec=60
+ExecStart=/usr/libexec/dipper-node-perms
+
+[Install]
+WantedBy=multi-user.target

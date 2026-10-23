@@ -1,0 +1,28 @@
+[Unit]
+Description=Leave the USB gadget to usb-moded: blank the vendor's gadget rc files
+Documentation=file:///usr/lib/systemd/system/usb-moded.service
+# LineageOS 22.2's init.qcom.usb.rc builds its own configfs gadget in g1 at
+# zygote-start (configs/b.1 plus one instance of every function, mtp.gs0 among
+# them) and the AIDL gadget HAL then drives it.  usb-moded's configurator could
+# not create configs/c.1 next to b.1 (EBUSY) and mtp.mtp next to mtp.gs0
+# (single-instance), so usb-moded failed at every boot and the phone was
+# invisible over USB.  Tearing the vendor gadget down at runtime instead killed
+# the whole phone (its rmnet/diag functions are wired to the modem), so it is
+# never built: both rc files are replaced by an empty one before the container
+# starts.  Nothing on Ubuntu Touch uses Android's USB stack.
+DefaultDependencies=no
+After=mount-android-partitions.service halium-android-partitions.service
+Before=lxc-android-config.service
+ConditionPathExists=/var/lib/lxc/android/rootfs/vendor/etc/init/hw/init.qcom.usb.rc
+
+[Service]
+Type=oneshot
+RemainAfterExit=yes
+# init skips group/other-writable rc files: /etc/dipper/empty is root:root 0644.
+ExecStart=/bin/mount --bind /etc/dipper/empty /var/lib/lxc/android/rootfs/vendor/etc/init/hw/init.qcom.usb.rc
+ExecStart=-/bin/mount --bind /etc/dipper/empty /var/lib/lxc/android/rootfs/vendor/etc/init/android.hardware.usb.gadget-service.qti.rc
+ExecStop=-/bin/umount /var/lib/lxc/android/rootfs/vendor/etc/init/android.hardware.usb.gadget-service.qti.rc
+ExecStop=-/bin/umount /var/lib/lxc/android/rootfs/vendor/etc/init/hw/init.qcom.usb.rc
+
+[Install]
+WantedBy=sysinit.target

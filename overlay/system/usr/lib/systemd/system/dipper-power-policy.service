@@ -1,0 +1,11 @@
+[Unit]
+Description=Charger-only hvdcp_opti, no Android health HAL (suspend blockers)
+After=lxc-android-config.service
+Requires=lxc-android-config.service
+
+[Service]
+Type=oneshot
+ExecStart=/usr/libexec/dipper-power-policy boot
+
+[Install]
+WantedBy=multi-user.target

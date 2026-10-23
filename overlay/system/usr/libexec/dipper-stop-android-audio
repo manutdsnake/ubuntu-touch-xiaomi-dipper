@@ -1,0 +1,18 @@
+#!/bin/sh
+# Stop the container's 32-bit audio HAL service before PulseAudio starts.
+#
+# Both it and PulseAudio's in-process 64-bit HAL initialise ACDB, and the
+# kernel's calibration blocks (voice cal types 2/3) can be allocated only once:
+# whoever comes second gets "voice_alloc_cal: Cal_utils_alloc_block failed,
+# ret = -12", runs uncalibrated, and the earpiece is ten times quieter.  All
+# audio on Ubuntu Touch goes through PulseAudio, so the Android one goes.
+A="lxc-attach -n android --"
+i=0
+while [ $i -lt 60 ]; do
+    s=$($A /system/bin/getprop init.svc.vendor.audio-hal 2>/dev/null)
+    [ "$s" = running ] && break
+    i=$((i + 1)); sleep 1
+done
+$A /system/bin/setprop ctl.stop vendor.audio-hal
+echo "vendor.audio-hal was '$s', stopped"
+exit 0

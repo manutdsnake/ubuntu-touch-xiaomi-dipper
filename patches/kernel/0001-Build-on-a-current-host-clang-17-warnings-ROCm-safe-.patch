@@ -1,0 +1,41 @@
+From ca77b83d69525c233c002055700774fcca74d875 Mon Sep 17 00:00:00 2001
+From: manut <manutdsnake@gmail.com>
+Date: Thu, 24 Sep 2026 22:52:16 +0200
+Subject: [PATCH 1/5] Build on a current host: clang 17 warnings, ROCm-safe
+ mkcompile_h
+
+---
+ Makefile            | 3 +++
+ scripts/mkcompile_h | 2 +-
+ 2 files changed, 4 insertions(+), 1 deletion(-)
+
+diff --git a/Makefile b/Makefile
+index ab9942ed0..45ad016ff 100644
+--- a/Makefile
++++ b/Makefile
+@@ -827,6 +827,9 @@ endif
+ KBUILD_CFLAGS += $(call cc-disable-warning, unused-but-set-variable)
+ 
+ KBUILD_CFLAGS += $(call cc-disable-warning, unused-const-variable)
++
++# clang 17 is stricter than the compiler this tree was written for.
++KBUILD_CFLAGS += -Wno-fortify-source -Wno-error -Wno-ignored-optimization-argument -Wno-unused-command-line-argument -Wno-deprecated-non-prototype
+ ifdef CONFIG_FRAME_POINTER
+ KBUILD_CFLAGS	+= -fno-omit-frame-pointer -fno-optimize-sibling-calls
+ else
+diff --git a/scripts/mkcompile_h b/scripts/mkcompile_h
+index 62d1597df..f38a00d96 100755
+--- a/scripts/mkcompile_h
++++ b/scripts/mkcompile_h
+@@ -76,7 +76,7 @@ UTS_TRUNCATE="cut -b -$UTS_LEN"
+   echo \#define LINUX_COMPILE_BY \"`echo $LINUX_COMPILE_BY | $UTS_TRUNCATE`\"
+   echo \#define LINUX_COMPILE_HOST \"`echo $LINUX_COMPILE_HOST | $UTS_TRUNCATE`\"
+ 
+-  echo \#define LINUX_COMPILER \"`$CC -v 2>&1 | grep ' version ' | sed 's/[[:space:]]*$//'`\"
++  echo \#define LINUX_COMPILER \"`$CC -v 2>&1 | grep ' version ' | grep -v '^Found ' | head -n 1 | sed 's/[[:space:]]*$//'`\"
+ ) > .tmpcompile
+ 
+ # Only replace the real compile.h if the new one is different,
+-- 
+2.53.0
+

@@ -1,0 +1,8 @@
+# dipper: the extractor decodes video through the Android codecs, which need
+# /dev/binder as well as hwbinder (it only had hwbinder: every video failed to
+# extract, "Binder driver /dev/binder could not be opened").
+/dev/{,binderfs/}binder rw,
+/dev/{,binderfs/}vndbinder rw,
+/etc/fonts/** r,
+/var/cache/fontconfig/ r,
+/var/cache/fontconfig/** r,

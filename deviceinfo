@@ -1,0 +1,73 @@
+# Xiaomi Mi 8 (dipper) - Ubuntu Touch 24.04 on Halium 16
+#
+# Base: LineageOS 22.2 (Android 15) vendor/odm and MIUI V12.5.2.0.QEACNXM
+# firmware on the phone, retrofit dynamic partitions (super spread over the
+# physical system, vendor and cust partitions). Kernel: LineageOS lineage-22.2
+# sdm845 (4.9.337) plus this port's commits.
+
+deviceinfo_name="Mi 8"
+deviceinfo_manufacturer="Xiaomi"
+deviceinfo_codename="dipper"
+deviceinfo_arch="aarch64"
+
+deviceinfo_halium_version="16"
+deviceinfo_ubuntu_touch_release="24.04-2.x"
+
+# The port's kernel fork: LineageOS lineage-22.2 plus the port's commits on
+# branch halium-16-dipper (the build tools clone, they do not patch).
+deviceinfo_kernel_source="https://github.com/manutdsnake/android_kernel_xiaomi_sdm845"
+deviceinfo_kernel_source_branch="halium-16-dipper"
+# LineageOS' own defconfig and device fragment, then the port's fragment
+# (build-kernel.sh passes this to make unquoted; make merges *.config targets).
+deviceinfo_kernel_defconfig="vendor/xiaomi/mi845_defconfig vendor/xiaomi/dipper.config vendor/xiaomi/dipper_halium.config"
+deviceinfo_kernel_clang_compile="true"
+# The toolchain the running kernel was built with (tools/kmake.sh, shared with
+# the Mi 9): halium 16's default would be r510928 from main-kernel-build-2024,
+# which this 4.9 tree has not been tried with.
+deviceinfo_kernel_clang_branch="main-kernel-build-2023"
+deviceinfo_kernel_clang_revision="r487747c"
+deviceinfo_kernel_llvm_compile="true"
+
+# Image.gz-dtb: every sdm845/dipper DTB appended to the kernel
+# (CONFIG_BUILD_ARM64_APPENDED_DTB_IMAGE); the bootloader picks one. No dtbo
+# is built - the one LineageOS flashed stays.
+deviceinfo_kernel_apply_overlay="false"
+deviceinfo_kernel_image_name="Image.gz-dtb"
+
+# Must stay under 512 bytes: this bootloader ignores the v1 header's
+# extra_cmdline, so anything past 512 is silently cut off (the first boot ran
+# with "systemd.unified_cgroup_hierar").
+deviceinfo_kernel_cmdline="androidboot.hardware=qcom msm_rtb.filter=0x237 ehci-hcd.park=3 lpm_levels.sleep_disabled=1 service_locator.enable=1 swiotlb=2048 androidboot.configfs=true loop.max_part=7 androidboot.usbcontroller=a600000.dwc3 androidboot.boot_devices=soc/1d84000.ufshc firmware_class.path=/vendor/firmware_mnt/image console=tty0 security=apparmor apparmor=1 selinux=0 androidboot.selinux=permissive systemd.unified_cgroup_hierarchy=0 systempart=/dev/mapper/system"
+
+# v1 boot image as LineageOS builds it for sdm845-common; values as
+# LineageOS uses them. 64 MiB boot and recovery partitions.
+deviceinfo_bootimg_header_version="1"
+deviceinfo_bootimg_os_version="15.0.0"
+deviceinfo_bootimg_os_patch_level="2026-09"
+deviceinfo_bootimg_qcdt="false"
+deviceinfo_bootimg_partition_size="67108864"
+deviceinfo_flash_pagesize="4096"
+deviceinfo_flash_offset_base="0x00000000"
+deviceinfo_flash_offset_kernel="0x00008000"
+deviceinfo_flash_offset_ramdisk="0x01000000"
+deviceinfo_flash_offset_second="0x00f00000"
+deviceinfo_flash_offset_tags="0x00000100"
+
+# halium's dynparts ramdisk plus initramfs-overlay/ (retrofit dynamic
+# partitions, e2fsprogs 1.47): tools/build-initramfs.sh.
+deviceinfo_prebuilt_boot_ramdisk="ramdisk/halium-boot-ramdisk.img"
+
+deviceinfo_has_recovery_partition="true"
+deviceinfo_recovery_partition_size="67108864"
+deviceinfo_use_unified_recovery="true"
+deviceinfo_unified_recovery_ui_density="xxhdpi"
+
+# The rootfs (24.04 + Halium 16 GSI, ~3.2 GiB) goes into the logical system
+# partition of the retrofit super (systempart=/dev/mapper/system): on the first
+# install the recovery drops the ROM's product/system_ext and grows system.
+deviceinfo_system_partition_size="4096M"
+deviceinfo_rootfs_image_sector_size="4096"
+
+# No overlaystore: the device tarball's system/ is unpacked straight into the
+# rootfs (install and every OTA), so units, .wants links and replaced files
+# behave like any packaged file.

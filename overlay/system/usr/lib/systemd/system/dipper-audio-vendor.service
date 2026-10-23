@@ -1,0 +1,12 @@
+[Unit]
+Description=64-bit audio HAL support for PulseAudio (64-bit ACDB libraries)
+After=local-fs.target
+Before=systemd-user-sessions.service user@32011.service
+
+[Service]
+Type=oneshot
+RemainAfterExit=yes
+ExecStart=/usr/libexec/dipper-audio-vendor
+
+[Install]
+WantedBy=multi-user.target

@@ -1,0 +1,27 @@
+#!/bin/sh
+# Bluetooth headphones: let the Ubuntu Touch volume slider control loudness.
+#
+# The slider sets the stream (media role) volume; with AVRCP absolute volume
+# the headphones' own volume is a separate PulseAudio sink volume that keeps
+# whatever the headset reported on connect (31% on the user's OHR503), so
+# music is quiet and the slider never reaches it.  Put every new Bluetooth
+# sink at 100% once, like Android ties both together; the headset's buttons
+# still work afterwards.
+export XDG_RUNTIME_DIR=/run/user/$(id -u)
+max_new() {
+    for s in $(pactl list sinks short 2>/dev/null | awk '$2 ~ /^bluez_sink\./ {print $2}'); do
+        case " $seen " in *" $s "*) continue ;; esac
+        pactl set-sink-volume "$s" 100% && echo "dipper-bt-volume: $s -> 100%"
+        seen="$seen $s"
+    done
+    # forget sinks that went away, so a reconnect is handled again
+    now=$(pactl list sinks short 2>/dev/null | awk '{print $2}')
+    keep=""
+    for s in $seen; do echo "$now" | grep -qx "$s" && keep="$keep $s"; done
+    seen=$keep
+}
+seen=""
+max_new
+pactl subscribe 2>/dev/null | while read -r line; do
+    case "$line" in *"'new' on sink"*|*"'remove' on sink"*) max_new ;; esac
+done

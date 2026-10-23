@@ -23,15 +23,15 @@ device yet.
 | Waydroid (Android apps) | works |
 | MTP and ADB over USB | works |
 | Battery, charging, suspend (about 1.5 %/h idle with the screen off) | works |
-| Fingerprint, GPS, fast charging with a wall charger | not fully tested |
+| Fingerprint | works |
+| GPS | works |
+| Fast charging (wall charger) | works |
 | Updates from System Settings | not available - see [Updating](#updating) |
 
 Known issues:
 
 - Switching camera lenses takes about 0.8 s (the camera HAL closes and reopens
   the device).
-- The audio HAL can crash (for example when unplugging USB); the microphone in
-  calls is then silent until the next reboot.
 
 ## Before you start
 

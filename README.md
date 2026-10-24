@@ -188,3 +188,16 @@ These are meant to go upstream to UBports/Halium.
 
 UBports and Halium for Ubuntu Touch, the build tools and the GSI; LineageOS for
 the kernel and the Android base the port runs on.
+
+## License
+
+This port's own work - scripts, installers, configuration, tools and docs - is
+under the [MIT License](LICENSE): use, change and share it for anything you
+like, including other ports and commercial work.
+
+Files taken from other projects and changed for this port keep their original
+license, for example the Lomiri, camera app and Waydroid files under
+`overlay/` (GPL-3.0), the kernel patches in `patches/` (GPL-2.0), the C
+library in `initramfs-overlay/` (LGPL-2.1) and the Android audio
+configuration files (their vendors' licenses). The release images contain
+Ubuntu Touch, Halium and Android components under their own licenses.

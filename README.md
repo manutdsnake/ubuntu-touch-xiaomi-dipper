@@ -116,8 +116,9 @@ drops out of the FASTBOOT screen ("press any key to shutdown"):
 - only one phone may be connected.
 
 On some computers the Mi 8's fastboot answers commands but hangs as soon as an
-image is sent (seen on an AMD Ryzen desktop on every USB port). If that
-happens, use another computer for this one step, or a USB 2.0 hub.
+image is sent. On an AMD Ryzen desktop it hung on several ports and worked on
+another one, so try every port before giving up; otherwise use a USB 2.0 hub
+or another computer for this one step.
 
 ## Updating
 

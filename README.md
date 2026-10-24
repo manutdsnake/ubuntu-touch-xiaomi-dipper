@@ -1,11 +1,9 @@
 # Ubuntu Touch for the Xiaomi Mi 8 (dipper)
 
-Ubuntu Touch 24.04 (24.04-2.x) on Halium 16, running on top of the vendor of
-LineageOS 22.2 (Android 15) and the MIUI V12.5.2.0.QEACNXM firmware. Community port, not an official UBports
-device yet.
+Ubuntu Touch 24.04 (24.04-2.x) on Halium 16 for the Xiaomi Mi 8, running on
+the vendor and odm partitions of LineageOS 22.2 (Android 15) and the MIUI V12.5.2.0.QEACNXM firmware. Community port, not an official UBports device yet.
 
-> **Installing this erases Android and everything on the phone.** Read
-> [Before you start](#before-you-start) completely before you run anything.
+> **Installing erases everything on the phone.** Back up your data first.
 
 ## What works
 
@@ -33,46 +31,59 @@ Known issues:
 - Switching camera lenses takes about 0.8 s (the camera HAL closes and reopens
   the device).
 
-## Before you start
+## What you need
 
-All of these are required. The installer cannot check most of them for you.
+- **A Xiaomi Mi 8, codename `dipper`.** Not the Mi 8 SE (sirius), Mi 8 Lite (platina), Mi 8 Pro (equuleus) or Mi 8 Explorer Edition (ursa).
+- **An unlocked bootloader.** Unlock it with Xiaomi's official
+  [Mi Unlock](https://en.miui.com/unlock/download_en.html) tool. It needs a Mi
+  account bound to the phone (*Settings > Additional settings > Developer
+  options > Mi Unlock status* in MIUI), Xiaomi usually makes you wait 7 days or
+  more, and unlocking wipes the phone.
+- **Nothing else on the phone.** It does not matter what runs on it now -
+  MIUI, LineageOS, another ROM or Ubuntu Touch. The installer flashes the right
+  firmware (MIUI V12.5.2.0.QEACNXM, downloaded from Xiaomi's server) and the Android base
+  Ubuntu Touch needs by itself.
+- **Battery at 50 % or more** and a USB cable that carries data.
+- **A computer** with Windows, macOS or Linux, an internet connection and
+  about 8 GB of free disk space (about 2 GB for this port, 2.2 GB for
+  Xiaomi's firmware package, plus unpacking).
 
-1. **The phone is a Xiaomi Mi 8, codename `dipper`.** Not the Mi 8 SE
-   (sirius), Mi 8 Lite (platina), Mi 8 Pro (equuleus) or Mi 8 Explorer
-   Edition (ursa). In fastboot mode
-   `fastboot getvar product` must print `dipper`.
-2. **The bootloader is unlocked.** Use Xiaomi's official
-   [Mi Unlock](https://en.miui.com/unlock/download_en.html) tool with your Mi
-   account (bound in *Developer options > Mi Unlock status* while running
-   MIUI). Xiaomi usually makes you wait 7 days or more before it allows the
-   unlock. Unlocking wipes the phone.
-3. **The MIUI V12.5.2.0.QEACNXM firmware is flashed.** This is the firmware
-   (modem, bootloader, TrustZone...) the LineageOS build expects; the port was
-   built and tested on it. Get the firmware package for dipper, version
-   `V12.5.2.0.QEACNXM`, from
-   [xiaomifirmwareupdater.com](https://xiaomifirmwareupdater.com/firmware/dipper/)
-   and flash it as the LineageOS install guide describes.
-4. **LineageOS 22.2 (Android 15) for dipper is installed and has booted at
-   least once.** Ubuntu Touch uses its vendor and dynamic partition layout;
-   **MIUI or any other ROM will not work.** Follow the official
-   [LineageOS install guide for dipper](https://wiki.lineageos.org/devices/dipper/install/)
-   exactly. Tested with `lineage-22.2-20260919-nightly-dipper-signed.zip`.
-   Booting it once matters: Android sets the partitions up on the first boot.
-5. **Battery at 50 % or more**, and a good USB cable. If fastboot keeps
-   hanging, use a USB 2.0 port or a different computer - some USB 3
-   controllers (AMD ones in particular) do not get along with this bootloader.
-6. **Back up your data.** Internal storage is formatted.
+## Installation on Windows
 
-### What you need on the computer
+1. Download [`install-windows.cmd`](https://github.com/manutdsnake/ubuntu-touch-xiaomi-dipper/releases/latest/download/install-windows.cmd).
+2. Double-click it. If Windows says *Windows protected your PC*, click
+   *More info* > *Run anyway* (it is a plain script; open it in Notepad to see
+   what it does).
+3. Follow the window. It downloads `adb` and `fastboot` (Google's
+   platform-tools) and this port's release (about 2 GB), checks every file,
+   and tells you when to press which buttons on the phone:
+   - **Volume Down + Power** with the phone off, for the FASTBOOT screen
+     (a phone running Android with USB debugging on is restarted into it
+     automatically);
+   - **Volume Up + Power** until the Ubuntu Touch recovery appears.
 
-- Linux or macOS (on Windows, follow [Manual installation](#manual-installation)).
-- `adb` and `fastboot` - Android
-  [platform-tools](https://developer.android.com/tools/releases/platform-tools)
-  (Debian/Ubuntu: `sudo apt install adb fastboot`).
-- `curl` (or `wget`) and `sha256sum` (macOS: `brew install coreutils`).
-- About 2 GB of free disk space.
+   Everything else is automatic: the installer checks the firmware and flashes
+   it where needed (downloaded from Xiaomi), writes the Android base, formats
+   the storage and copies Ubuntu Touch to the phone. The phone then installs
+   it by itself (about 5-10 minutes, with a progress animation) and starts
+   Ubuntu Touch. The first start takes a few minutes.
 
-## Installation (automatic)
+The downloads go to a folder `ut-dipper-files` next to `install-windows.cmd`;
+delete it when the phone runs Ubuntu Touch. If the installer stops with an
+error, fix the cause and double-click it again: files already downloaded are
+kept, and a phone that is already in the Ubuntu Touch recovery skips fastboot.
+
+Fastboot needs a USB driver. If Mi Unlock worked on this computer the driver
+is already there; otherwise install the
+[Google USB driver](https://developer.android.com/studio/run/win-usb) and, in
+*Device Manager*, pick it for the phone while it shows FASTBOOT.
+
+## Installation with the script (Linux, macOS)
+
+The same steps from a terminal, with `adb` and `fastboot`
+([platform-tools](https://developer.android.com/tools/releases/platform-tools),
+Debian/Ubuntu: `sudo apt install adb fastboot`), `curl`, `unzip` and
+`sha256sum` (macOS: `brew install coreutils`):
 
 ```sh
 git clone https://github.com/manutdsnake/ubuntu-touch-xiaomi-dipper.git
@@ -80,99 +91,48 @@ cd ubuntu-touch-xiaomi-dipper
 ./install.sh
 ```
 
-The installer walks you through it:
+It downloads the [release](https://github.com/manutdsnake/ubuntu-touch-xiaomi-dipper/releases), checks every file, and tells you when to
+press which buttons. If the phone is already in a recovery with a root adb
+shell (UBports, LineageOS, TWRP), the script writes this port's recovery over
+adb and fastboot is not needed at all. Options: `--files DIR` (where the
+downloads go), `--offline` (use only files already in DIR), `--update`
+(see below).
 
-1. downloads the latest [release](https://github.com/manutdsnake/ubuntu-touch-xiaomi-dipper/releases)
-   (about 1 GB) and checks the SHA-256 checksums;
-2. asks you to put the phone into fastboot (power off, then hold
-   **Volume Down + Power**), checks that it is a dipper, and flashes the
-   UBports recovery;
-3. reboots into the recovery and formats userdata as ext4 (after asking);
-4. copies the system files to the phone and installs them. The recovery
-   removes LineageOS' `product` and `system_ext` partitions and grows `system`
-   to 4 GB for the Ubuntu Touch root filesystem; the vendor partition is kept;
-5. reboots into Ubuntu Touch. The first boot takes a few minutes.
+## If fastboot fails
 
-Options: `--files DIR` reuses files already downloaded, `--skip-recovery`
-starts with the phone already in this release's recovery, `--keep-data`
-does not format userdata (only for updates, see below).
+Fastboot is used once, to flash `recovery.img`. If it hangs or the phone
+drops out of the FASTBOOT screen ("press any key to shutdown"):
 
-If the phone shows the Mi logo or boots Android when it should be in
-recovery, power it off and hold **Volume Up + Power** until the Ubuntu Touch
-recovery appears; the installer waits for it.
+- use a USB port directly on the computer (no hub, no front panel) and try
+  another port - on desktops the rear ports often sit on a different USB
+  controller;
+- a USB 2.0 hub between the phone and the computer often fixes hangs on
+  USB 3 controllers (AMD ones in particular);
+- after a failed attempt, restart the FASTBOOT screen (hold Volume Down +
+  Power) before trying again;
+- only one phone may be connected.
 
-### If fastboot fails on your Mi 8
-
-On some computers the Mi 8's fastboot answers the first commands and then
-drops the USB connection as soon as an image is sent. Flash the recovery from
-the LineageOS recovery instead (enable ADB in its *Advanced* menu):
-
-```sh
-adb push recovery.img /tmp/
-adb shell dd if=/tmp/recovery.img of=/dev/block/by-name/recovery
-adb reboot recovery
-```
-
-Then run `./install.sh --skip-recovery --files <folder with the release files>`.
-
-## Manual installation
-
-The same steps by hand, for Windows or if the installer cannot drive your
-phone. Download every file of the latest
-[release](https://github.com/manutdsnake/ubuntu-touch-xiaomi-dipper/releases)
-into one folder, open a terminal there, and check the files with
-`sha256sum -c SHA256SUMS` (Windows: `certutil -hashfile <file> SHA256`).
-
-1. Phone in fastboot (Volume Down + Power), then:
-   ```sh
-   fastboot flash recovery recovery.img
-   fastboot reboot recovery
-   ```
-   (If `fastboot reboot recovery` is not supported: power off, then hold
-   Volume Up + Power.)
-2. In the Ubuntu Touch recovery choose **Factory reset** - this formats
-   userdata as ext4. Then make sure `/cache` is there:
-   ```sh
-   adb shell 'mkdir -p /cache/recovery && ls /cache/recovery'
-   ```
-3. Copy the files and create the command file:
-   ```sh
-   adb push rootfs.tar.xz halium_halium_arm64.tar.xz device_dipper.tar.xz version.tar.xz /cache/recovery/
-   adb push image-master.tar.xz image-master.tar.xz.asc image-signing.tar.xz image-signing.tar.xz.asc /cache/recovery/
-   adb shell 'cd /cache/recovery && for f in rootfs halium_halium_arm64 device_dipper version; do touch $f.tar.xz.asc; done && touch allow-unsigned'
-   adb push ubuntu_command /cache/recovery/
-   ```
-   `ubuntu_command` is in the release. The `allow-unsigned` file tells this
-   port's recovery to accept files that are not signed by UBports (only for
-   this one run).
-4. Install and reboot:
-   ```sh
-   adb shell system-image-upgrader /cache/recovery/ubuntu_command
-   adb reboot
-   ```
+On some computers the Mi 8's fastboot answers commands but hangs as soon as an
+image is sent (seen on an AMD Ryzen desktop on every USB port). If that
+happens, use another computer for this one step, or a USB 2.0 hub.
 
 ## Updating
 
-The port is not on the UBports update server yet, so System Settings will
-not find updates. To install a newer release and **keep your data**:
-
-```sh
-git pull
-./install.sh --keep-data
-```
-
-`--keep-data` replaces the system only; your apps, settings and files stay.
+The port is not on the UBports update server yet, so *System Settings >
+Updates* will not find new versions. To install a newer release **and keep
+your data**, run `./install.sh --update` (it replaces the system only).
+Running `install-windows.cmd` or `./install.sh` without `--update` erases
+the phone.
 
 ## Going back to Android
 
 Ubuntu Touch changes the dynamic partitions (`product` and `system_ext` are
-gone, `system` is bigger), so restore them with a full ROM install:
+gone, `system` is bigger), so restore them with a full install:
 
 - **MIUI:** flash a dipper fastboot ROM with Xiaomi's MiFlash tool
   ("clean all"). This restores every partition, including the stock recovery.
-- **LineageOS:** flash the LineageOS recovery with fastboot (or `dd` as
-  above), format data in it, and sideload the full ROM zip. Full ROM zips
-  recreate the dynamic partitions.
+- **LineageOS:** follow the LineageOS install guide for dipper from the start
+  (it rewrites the dynamic partitions with `fastboot wipe-super`).
 
 ## Building from source
 
@@ -202,6 +162,8 @@ Repository layout:
 | `ramdisk-recovery-overlay/` | recovery changes: retrofit dynamic partitions, local installs |
 | `patches/` | kernel patches (also on the kernel branch) and config fragments |
 | `port-debs/` | rebuilt packages whose files are in `overlay/` |
+| `install.sh`, `install-windows.cmd` | installers for Linux/macOS and Windows |
+| `installer/` | installer settings (`device.sh`) and the Windows installer's PowerShell part (`tools/make-windows-installer.py` builds `install-windows.cmd` from both) |
 | `tools/` | helper scripts (initramfs, mixer paths) |
 
 ### How the port differs from a usual Halium port

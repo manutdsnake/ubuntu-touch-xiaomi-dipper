@@ -69,9 +69,12 @@ Known issues:
    Ubuntu Touch. The first start takes a few minutes.
 
 The downloads go to a folder `ut-dipper-files` next to `install-windows.cmd`;
-delete it when the phone runs Ubuntu Touch. If the installer stops with an
-error, fix the cause and double-click it again: files already downloaded are
-kept, and a phone that is already in the Ubuntu Touch recovery skips fastboot.
+delete it when the phone runs Ubuntu Touch. If something goes wrong the
+installer says what to do and tries again; files already downloaded are kept.
+If fastboot hangs while sending the recovery (see below) and the phone already
+has a recovery (Ubuntu Touch, LineageOS, TWRP), start that recovery with
+Volume Up + Power instead: the installer then writes its own recovery over adb
+and fastboot is not needed at all.
 
 Fastboot needs a USB driver. If Mi Unlock worked on this computer the driver
 is already there; otherwise install the
